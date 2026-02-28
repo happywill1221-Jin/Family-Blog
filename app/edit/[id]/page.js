@@ -1,27 +1,48 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
-export default function WritePage() {
+export default function EditPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [images, setImages] = useState([]);
   const [user, setUser] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
   const cursorPosRef = useRef(0);
   const router = useRouter();
+  const params = useParams();
+  const postId = params.id;
 
   useEffect(() => {
     const saved = localStorage.getItem('familyUser');
     if (!saved) { router.push('/login'); return; }
     setUser(JSON.parse(saved));
-  }, [router]);
+    fetchPost();
+  }, []);
+
+  const fetchPost = async () => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('id', postId)
+      .single();
+    if (error || !data) {
+      alert('글을 찾을 수 없습니다.');
+      router.push('/essays');
+      return;
+    }
+    setTitle(data.title || '');
+    setContent(data.content || '');
+    setImages(data.images || []);
+    setLoading(false);
+  };
 
   const compressImage = (file) => {
     return new Promise((resolve) => {
@@ -119,40 +140,43 @@ export default function WritePage() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from('posts').insert({
-      title: title.trim(),
-      content: content.trim(),
-      images: images,
-      author_name: user?.name || '익명',
-      author_emoji: user?.emoji || '👤',
-    });
+    const { error } = await supabase
+      .from('posts')
+      .update({
+        title: title.trim(),
+        content: content.trim(),
+        images: images,
+      })
+      .eq('id', postId);
     if (error) {
-      alert('저장에 실패했습니다: ' + error.message);
+      alert('수정에 실패했습니다: ' + error.message);
       setSubmitting(false);
     } else {
-      alert('글이 등록되었습니다! ✨');
+      alert('글이 수정되었습니다! ✨');
       router.push('/essays');
     }
   };
 
-  if (!user) return null;
+  if (!user || loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-gray-500">⏳ 불러오는 중...</p>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/dashboard" className="text-gray-500 hover:text-gray-700 text-sm">← 대시보드</Link>
-          <h1 className="text-lg font-bold text-gray-800">✏️ 글쓰기</h1>
+          <Link href="/essays" className="text-gray-500 hover:text-gray-700 text-sm">← 에세이</Link>
+          <h1 className="text-lg font-bold text-gray-800">✏️ 글 수정</h1>
           <div className="w-16"></div>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-purple-50 border-b">
-            <p className="text-sm text-gray-600">
-              {user.emoji} <strong>{user.name}</strong>(으)로 글쓰기
-            </p>
+          <div className="px-6 py-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-b">
+            <p className="text-sm text-gray-600">📝 글 수정 모드</p>
           </div>
 
           <form onSubmit={handleSubmit}>
@@ -179,8 +203,7 @@ export default function WritePage() {
             {showPreview ? (
               <div className="px-6 py-4 min-h-[300px]">{renderPreview()}</div>
             ) : (
-              <textarea ref={textareaRef}
-                placeholder="내용을 입력하세요... 📷 버튼으로 본문에 사진을 삽입할 수 있습니다."
+              <textarea ref={textareaRef} placeholder="내용을 입력하세요..."
                 value={content} onChange={(e) => setContent(e.target.value)}
                 className="w-full px-6 py-4 text-gray-700 placeholder-gray-300 focus:outline-none resize-none"
                 rows={12} />
@@ -208,12 +231,12 @@ export default function WritePage() {
             )}
 
             <div className="px-6 py-4 border-t flex justify-end gap-3">
-              <Link href="/dashboard" className="px-6 py-3 rounded-xl text-gray-500 hover:bg-gray-100">취소</Link>
+              <Link href="/essays" className="px-6 py-3 rounded-xl text-gray-500 hover:bg-gray-100">취소</Link>
               <button type="submit" disabled={submitting}
                 className={`px-8 py-3 rounded-xl text-white font-bold transition-colors ${
-                  submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+                  submitting ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600'
                 }`}>
-                {submitting ? '⏳ 등록 중...' : '🚀 등록하기'}
+                {submitting ? '⏳ 수정 중...' : '✅ 수정 완료'}
               </button>
             </div>
           </form>
