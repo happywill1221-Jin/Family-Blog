@@ -19,10 +19,17 @@ export default function DashboardPage() {
     setUser(JSON.parse(saved));
 
     const fetchCount = async () => {
-      const { count, error } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true });
-      if (!error) setPostCount(count || 0);
+      try {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('id');
+        console.log('posts data:', data, 'error:', error);
+        if (data) {
+          setPostCount(data.length);
+        }
+      } catch (e) {
+        console.log('fetch error:', e);
+      }
     };
     fetchCount();
   }, [router]);
