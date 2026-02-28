@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 
 export default function Home() {
   return (
@@ -77,12 +78,15 @@ export default function Home() {
       {/* 메뉴 */}
       <section className="max-w-4xl mx-auto py-6 px-4">
         <div className="flex justify-center gap-4">
-          <a href="/write" className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600">
+          <Link href="/write" className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600">
             ✏️ 글쓰기
-          </a>
-          <a href="/login" className="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">
+          </Link>
+          <Link href="/essays" className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600">
+            📝 에세이
+          </Link>
+          <Link href="/login" className="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">
             🔑 로그인
-          </a>
+          </Link>
         </div>
       </section>
     </main>
