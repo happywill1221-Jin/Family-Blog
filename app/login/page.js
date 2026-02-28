@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 const FAMILY_MEMBERS = [
-  { id: 1, name: '아빠', emoji: '👨', password: '1234' },
-  { id: 2, name: '엄마', emoji: '👩', password: '1234' },
-  { id: 3, name: '아들', emoji: '👦', password: '1234' },
-  { id: 4, name: '딸', emoji: '👧', password: '1234' },
+  { id: 1, name: '아빠', emoji: '👨' },
+  { id: 2, name: '엄마', emoji: '👩' },
+  { id: 3, name: '아들', emoji: '👦' },
+  { id: 4, name: '딸', emoji: '👧' },
 ];
 
 export default function LoginPage() {
@@ -17,14 +17,25 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const router = useRouter();
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     if (!selected) {
       setError('가족을 선택해주세요');
       return;
     }
     const member = FAMILY_MEMBERS.find((m) => m.id === selected);
-    if (password === member.password) {
+
+    // 간단한 해시 비교 (평문 노출 방지)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // "1234"의 SHA-256 해시값
+    const correctHash = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
+
+    if (hashHex === correctHash) {
       localStorage.setItem('familyUser', JSON.stringify(member));
       router.push('/dashboard');
     } else {
@@ -64,7 +75,7 @@ export default function LoginPage() {
         <form onSubmit={handleLogin}>
           <input
             type="password"
-            placeholder="비밀번호 (1234)"
+            placeholder="비밀번호를 입력하세요"
             value={password}
             onChange={(e) => { setPassword(e.target.value); setError(''); }}
             className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:border-blue-500 text-center text-lg tracking-widest mb-4"
