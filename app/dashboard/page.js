@@ -17,114 +17,69 @@ export default function DashboardPage() {
       return;
     }
     setUser(JSON.parse(saved));
-
-    const fetchCount = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('posts')
-          .select('id');
-        console.log('posts data:', data, 'error:', error);
-        if (data) {
-          setPostCount(data.length);
-        }
-      } catch (e) {
-        console.log('fetch error:', e);
-      }
-    };
-    fetchCount();
+    fetchPostCount();
   }, [router]);
+
+  const fetchPostCount = async () => {
+    const { count, error } = await supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true });
+    if (!error) setPostCount(count || 0);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('familyUser');
-    router.push('/');
+    router.push('/login');
   };
 
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      <header className="bg-white/80 backdrop-blur-sm shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="text-gray-500 hover:text-gray-700 text-sm">
-            ← 홈으로
-          </Link>
-          <h1 className="text-lg font-bold text-gray-800">🏠 가족 블로그</h1>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+          <h1 className="text-xl font-bold text-gray-800">🏠 우리 가족</h1>
           <button
             onClick={handleLogout}
-            className="text-sm text-red-400 hover:text-red-600"
+            className="text-sm text-gray-400 hover:text-red-500"
           >
             로그아웃
           </button>
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 pt-10 pb-6 text-center">
-        <div className="text-6xl mb-4">{user.emoji}</div>
-        <h2 className="text-2xl font-bold text-gray-800">
-          안녕하세요, {user.name}! 👋
-        </h2>
-        <p className="text-gray-500 mt-2">오늘은 어떤 이야기를 나눠볼까요?</p>
-      </div>
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        {/* 환영 메시지 */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl p-6 text-white mb-8 shadow-lg">
+          <p className="text-3xl mb-2">{user.emoji}</p>
+          <h2 className="text-2xl font-bold mb-1">안녕하세요, {user.name}!</h2>
+          <p className="text-blue-100 text-sm">오늘도 가족과 함께하는 하루 되세요 💕</p>
+        </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Link href="/write" className="group">
-            <div className="bg-white rounded-3xl shadow-lg p-8 border-2 border-transparent hover:border-blue-400 hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1">
-              <div className="text-5xl mb-4">✏️</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">글쓰기</h3>
-              <p className="text-gray-500 text-sm">
-                새로운 이야기를 작성해보세요.<br />
-                사진도 함께 올릴 수 있어요!
-              </p>
-              <div className="mt-4 text-blue-500 font-medium text-sm group-hover:translate-x-2 transition-transform">
-                글쓰러 가기 →
-              </div>
-            </div>
-          </Link>
+        {/* 메뉴 카드들 */}
+        <div className="grid gap-4">
+          {/* 에세이 보기 */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border-2 border-green-100 hover:border-green-300 transition-colors">
+            <p className="text-3xl mb-3">📖</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">에세이 보기</h3>
+            <p className="text-sm text-gray-500 mb-1">가족들이 쓴 글을 읽어보세요.</p>
+            <p className="text-sm text-gray-400 mb-4">현재 {postCount}개의 글이 있어요.</p>
+            <Link href="/essays" className="text-green-500 font-bold text-sm hover:text-green-600">
+              읽으러 가기 →
+            </Link>
+          </div>
 
-          <Link href="/essays" className="group">
-            <div className="bg-white rounded-3xl shadow-lg p-8 border-2 border-transparent hover:border-green-400 hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1">
-              <div className="text-5xl mb-4">📖</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">에세이 보기</h3>
-              <p className="text-gray-500 text-sm">
-                가족들이 쓴 글을 읽어보세요.<br />
-                현재 {postCount}개의 글이 있어요.
-              </p>
-              <div className="mt-4 text-green-500 font-medium text-sm group-hover:translate-x-2 transition-transform">
-                읽으러 가기 →
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/" className="group">
-            <div className="bg-white rounded-3xl shadow-lg p-8 border-2 border-transparent hover:border-pink-400 hover:shadow-xl transition-all duration-300 group-hover:-translate-y-1">
-              <div className="text-5xl mb-4">📷</div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">가족 사진</h3>
-              <p className="text-gray-500 text-sm">
-                소중한 가족 사진을 감상하세요.<br />
-                행복한 순간들이 담겨있어요.
-              </p>
-              <div className="mt-4 text-pink-500 font-medium text-sm group-hover:translate-x-2 transition-transform">
-                사진 보기 →
-              </div>
-            </div>
-          </Link>
-
-          <div className="bg-white rounded-3xl shadow-lg p-8">
-            <div className="text-5xl mb-4">📊</div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">내 정보</h3>
-            <div className="space-y-2 text-sm text-gray-500">
-              <p>👤 이름: <strong className="text-gray-700">{user.name}</strong></p>
-              <p>📝 전체 글: <strong className="text-gray-700">{postCount}개</strong></p>
-              <p>💝 상태: <strong className="text-green-600">접속 중</strong></p>
-            </div>
+          {/* 글쓰기 */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border-2 border-blue-100 hover:border-blue-300 transition-colors">
+            <p className="text-3xl mb-3">✏️</p>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">새 글 쓰기</h3>
+            <p className="text-sm text-gray-500 mb-4">오늘의 이야기를 들려주세요.</p>
+            <Link href="/write" className="text-blue-500 font-bold text-sm hover:text-blue-600">
+              글쓰러 가기 →
+            </Link>
           </div>
         </div>
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 py-8 text-center">
-        <p className="text-gray-400 text-sm">🏠 우리 가족만의 소중한 공간</p>
-      </div>
+      </main>
     </div>
   );
 }
