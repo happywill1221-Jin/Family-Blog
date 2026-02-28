@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 
 export default function WritePage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [images, setImages] = useState([]);
   const [user, setUser] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef(null);
   const router = useRouter();
 
@@ -76,33 +78,31 @@ export default function WritePage() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e) => {
+  // ✅ Supabase에 저장
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) {
       alert('제목과 내용을 모두 입력해주세요.');
       return;
     }
 
-    const posts = JSON.parse(localStorage.getItem('familyPosts') || '[]');
-    const newPost = {
-      id: Date.now(),
+    setSubmitting(true);
+
+    const { error } = await supabase.from('posts').insert({
       title: title.trim(),
       content: content.trim(),
       images: images,
-      author: user?.name || '익명',
-      emoji: user?.emoji || '👤',
-      date: new Date().toLocaleDateString('ko-KR'),
-      time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-    };
+      author_name: user?.name || '익명',
+      author_emoji: user?.emoji || '👤',
+    });
 
-    posts.unshift(newPost);
-
-    try {
-      localStorage.setItem('familyPosts', JSON.stringify(posts));
+    if (error) {
+      console.error('저장 실패:', error);
+      alert('저장에 실패했습니다: ' + error.message);
+      setSubmitting(false);
+    } else {
       alert('글이 등록되었습니다! ✨');
       router.push('/essays');
-    } catch (err) {
-      alert('저장 공간이 부족합니다. 사진 수를 줄여주세요.');
     }
   };
 
@@ -211,9 +211,14 @@ export default function WritePage() {
               </Link>
               <button
                 type="submit"
-                className="px-8 py-3 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 transition-colors"
+                disabled={submitting}
+                className={`px-8 py-3 rounded-xl text-white font-bold transition-colors ${
+                  submitting
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-500 hover:bg-blue-600'
+                }`}
               >
-                🚀 등록하기
+                {submitting ? '⏳ 등록 중...' : '🚀 등록하기'}
               </button>
             </div>
           </form>

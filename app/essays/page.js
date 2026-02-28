@@ -2,28 +2,57 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 
 export default function EssaysPage() {
   const [posts, setPosts] = useState([]);
   const [user, setUser] = useState(null);
   const [viewingImage, setViewingImage] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // ✅ Supabase에서 글 불러오기
+  const fetchPosts = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('posts')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('글 불러오기 실패:', error);
+    } else {
+      setPosts(data || []);
+    }
+    setLoading(false);
+  };
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('familyPosts');
-      if (saved) setPosts(JSON.parse(saved));
-    } catch (e) {}
+    fetchPosts();
     try {
       const savedUser = localStorage.getItem('familyUser');
       if (savedUser) setUser(JSON.parse(savedUser));
     } catch (e) {}
   }, []);
 
-  const handleDelete = (id) => {
+  // ✅ Supabase에서 삭제
+  const handleDelete = async (id) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    const updated = posts.filter((p) => p.id !== id);
-    setPosts(updated);
-    localStorage.setItem('familyPosts', JSON.stringify(updated));
+    const { error } = await supabase.from('posts').delete().eq('id', id);
+    if (error) {
+      alert('삭제 실패: ' + error.message);
+    } else {
+      setPosts(posts.filter((p) => p.id !== id));
+    }
+  };
+
+  // 날짜 포맷 함수
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${month}월 ${day}일 ${hours}:${minutes}`;
   };
 
   return (
@@ -66,7 +95,12 @@ export default function EssaysPage() {
 
       {/* 글 목록 */}
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {posts.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-20">
+            <p className="text-4xl mb-4">⏳</p>
+            <p className="text-gray-500">불러오는 중...</p>
+          </div>
+        ) : posts.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-6xl mb-4">📖</p>
             <p className="text-gray-500 text-lg mb-2">아직 작성된 글이 없습니다.</p>
@@ -88,11 +122,11 @@ export default function EssaysPage() {
                 {/* 글 헤더 */}
                 <div className="px-6 pt-6 pb-3 flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl">{post.emoji}</span>
+                    <span className="text-3xl">{post.author_emoji}</span>
                     <div>
-                      <p className="font-bold text-gray-800">{post.author}</p>
+                      <p className="font-bold text-gray-800">{post.author_name}</p>
                       <p className="text-xs text-gray-400">
-                        {post.date} {post.time || ''}
+                        {formatDate(post.created_at)}
                       </p>
                     </div>
                   </div>
@@ -141,7 +175,7 @@ export default function EssaysPage() {
                   </div>
                 )}
 
-                {/* 하단 구분선 */}
+                {/* 하단 */}
                 <div className="px-6 pb-4">
                   <div className="border-t border-gray-100 pt-3">
                     <p className="text-xs text-gray-400">
