@@ -77,6 +77,20 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
+            onClick={() => router.push('/search')}
+            style={{
+              padding: '8px 14px',
+              background: 'rgba(255,255,255,0.2)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: '10px',
+              fontSize: '13px',
+              cursor: 'pointer',
+            }}
+          >
+            🔍 검색
+          </button>
+          <button
             onClick={() => router.push('/change-password')}
             style={{
               padding: '8px 14px',
@@ -185,7 +199,7 @@ export default function DashboardPage() {
             {posts.map((post) => (
               <div
                 key={post.id}
-                onClick={() => router.push(`/post/${post.id}`)}
+                onClick={() => router.push('/post/' + post.id)}
                 style={{
                   background: 'white',
                   borderRadius: '16px',
@@ -219,7 +233,7 @@ export default function DashboardPage() {
                     {post.title || '제목 없음'}
                   </h4>
                   <span style={{ fontSize: '20px', marginLeft: '8px' }}>
-                    {post.authorEmoji || '👤'}
+                    {post.emoji || '👤'}
                   </span>
                 </div>
                 <p style={{
@@ -231,7 +245,7 @@ export default function DashboardPage() {
                   whiteSpace: 'nowrap',
                 }}>
                   {post.content
-                    ? post.content.replace(/<[^>]*>/g, '').substring(0, 80) + '...'
+                    ? post.content.substring(0, 80) + '...'
                     : '내용 없음'}
                 </p>
                 <div style={{
@@ -241,7 +255,7 @@ export default function DashboardPage() {
                   fontSize: '12px',
                   color: '#aaa',
                 }}>
-                  <span>{post.authorName || '익명'}</span>
+                  <span>{post.author || '익명'}</span>
                   <span>
                     {post.createdAt?.toDate
                       ? post.createdAt.toDate().toLocaleDateString('ko-KR')
