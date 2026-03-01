@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 
@@ -100,19 +101,35 @@ export default function Dashboard() {
             우리 가족
           </span>
         </div>
-        <button
-          onClick={handleLogout}
-          style={{
-            background: 'none', border: '1px solid var(--border)',
-            padding: '8px 16px', borderRadius: 'var(--radius-full)',
-            fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer',
-            transition: 'var(--transition)', fontFamily: 'inherit',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
-        >
-          로그아웃
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Link
+            href="/change-password"
+            style={{
+              background: 'none', border: '1px solid var(--border)',
+              padding: '8px 16px', borderRadius: 'var(--radius-full)',
+              fontSize: 13, color: 'var(--text-secondary)',
+              textDecoration: 'none', transition: 'var(--transition)',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+          >
+            🔒 비밀번호 변경
+          </Link>
+          <button
+            onClick={handleLogout}
+            style={{
+              background: 'none', border: '1px solid var(--border)',
+              padding: '8px 16px', borderRadius: 'var(--radius-full)',
+              fontSize: 13, color: 'var(--text-secondary)', cursor: 'pointer',
+              transition: 'var(--transition)', fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#f5f5f5'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+          >
+            로그아웃
+          </button>
+        </div>
       </nav>
 
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 20px 60px' }}>
