@@ -39,9 +39,19 @@ export default function LoginPage() {
 
     try {
       const configDoc = await getDoc(doc(db, 'config', 'app'));
+      
+      // ★ 디버깅 로그 추가
+      console.log('문서 존재 여부:', configDoc.exists());
+      console.log('문서 데이터:', configDoc.exists() ? configDoc.data() : '없음');
+      
       const correctPassword = configDoc.exists()
         ? configDoc.data().password
         : '1234';
+      
+      console.log('정답 비밀번호:', correctPassword);
+      console.log('입력한 비밀번호:', password);
+      console.log('타입 비교:', typeof correctPassword, typeof password);
+      console.log('일치 여부:', password === correctPassword);
 
       if (password !== correctPassword) {
         setError('비밀번호가 올바르지 않습니다');
@@ -56,6 +66,8 @@ export default function LoginPage() {
       router.push('/');
     } catch (err) {
       console.error('로그인 실패:', err);
+      console.error('에러 코드:', err.code);
+      console.error('에러 메시지:', err.message);
       setError('로그인 중 오류가 발생했습니다');
       setLoading(false);
     }
