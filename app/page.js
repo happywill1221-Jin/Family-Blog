@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
-export default function DashboardPage() {
+export default function HomePage() {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,255 +19,180 @@ export default function DashboardPage() {
       return;
     }
     setUser(JSON.parse(saved));
-    fetchPosts();
   }, [router]);
 
-  const fetchPosts = async () => {
-    try {
-      const q = query(
-        collection(db, 'posts'),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
-      const snapshot = await getDocs(q);
-      const postList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setPosts(postList);
-    } catch (error) {
-      console.error('글 불러오기 실패:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+useEffect(() => {
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q,
+      (snapshot) => {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setPosts(list);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('글 불러오기 에러:', error);
+        // orderBy 실패 시 정렬 없이 다시 시도
+        const q2 = query(collection(db, 'posts'));
+        onSnapshot(q2, (snapshot) => {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          list.sort((a, b) => {
+            const ta = a.createdAt?.seconds || 0;
+            const tb = b.createdAt?.seconds || 0;
+            return tb - ta;
+          });
+          setPosts(list);
+          setLoading(false);
+        });
+      }
+    );
+    return () => unsubscribe();
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     router.push('/login');
   };
 
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric', month: 'long', day: 'numeric'
+    });
+  };
+
   if (!user) return null;
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    }}>
+    <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
       {/* 헤더 */}
-      <header style={{
-        background: 'linear-gradient(135deg, #667eea, #764ba2)',
-        color: 'white',
-        padding: '20px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        boxShadow: '0 4px 20px rgba(102, 126, 234, 0.4)',
+      <div style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '24px 20px', color: 'white'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '28px' }}>🏠</span>
+        <div style={{
+          maxWidth: '800px', margin: '0 auto',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
           <div>
-            <h1 style={{ fontSize: '20px', fontWeight: '800', margin: 0 }}>
-              우리 가족 블로그
-            </h1>
-            <p style={{ fontSize: '13px', opacity: 0.85, margin: 0 }}>
+            <h1 style={{ margin: '0 0 4px', fontSize: '22px' }}>🏠 우리 가족 블로그</h1>
+            <p style={{ margin: 0, fontSize: '14px', opacity: 0.9 }}>
               {user.emoji} {user.name} 로그인 중
             </p>
           </div>
+          <button onClick={handleLogout} style={{
+            background: 'rgba(255,255,255,0.2)', color: 'white',
+            padding: '8px 16px', borderRadius: '8px', border: 'none',
+            cursor: 'pointer', fontSize: '13px'
+          }}>로그아웃</button>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            onClick={() => router.push('/search')}
-            style={{
-              padding: '8px 14px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '10px',
-              fontSize: '13px',
-              cursor: 'pointer',
-            }}
-          >
-            🔍 검색
-          </button>
-          <button
-            onClick={() => router.push('/change-password')}
-            style={{
-              padding: '8px 14px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '10px',
-              fontSize: '13px',
-              cursor: 'pointer',
-            }}
-          >
-            🔒 비밀번호
-          </button>
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: '8px 14px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '10px',
-              fontSize: '13px',
-              cursor: 'pointer',
-            }}
-          >
-            로그아웃
-          </button>
-        </div>
-      </header>
+      </div>
 
-      {/* 메인 컨텐츠 */}
-      <main style={{ maxWidth: '700px', margin: '0 auto', padding: '24px 16px' }}>
-
-        {/* 환영 카드 */}
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+        {/* 버튼 영역 */}
         <div style={{
-          background: 'white',
-          borderRadius: '20px',
-          padding: '28px',
-          marginBottom: '20px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-          textAlign: 'center',
+          display: 'flex', gap: '12px', marginBottom: '20px',
+          flexWrap: 'wrap'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>{user.emoji}</div>
-          <h2 style={{ fontSize: '22px', fontWeight: '800', margin: '0 0 8px 0' }}>
-            {user.name}, 안녕하세요! 👋
-          </h2>
-          <p style={{ color: '#888', fontSize: '14px', margin: 0 }}>
-            오늘도 좋은 하루 보내세요!
-          </p>
-        </div>
-
-        {/* 새 글 쓰기 버튼 */}
-        <button
-          onClick={() => router.push('/write')}
-          style={{
-            width: '100%',
-            padding: '18px',
+          <Link href="/write" style={{
+            display: 'inline-block',
             background: 'linear-gradient(135deg, #667eea, #764ba2)',
             color: 'white',
-            border: 'none',
-            borderRadius: '16px',
-            fontSize: '16px',
-            fontWeight: '700',
-            cursor: 'pointer',
-            marginBottom: '24px',
-            boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-          }}
-        >
-          ✍️ 새 글 쓰기
-        </button>
+            padding: '12px 24px',
+            borderRadius: '12px',
+            textDecoration: 'none',
+            fontSize: '15px',
+            fontWeight: '600',
+            boxShadow: '0 2px 8px rgba(102,126,234,0.4)'
+          }}>
+            ✏️ 새 글 쓰기
+          </Link>
 
-        {/* 글 목록 */}
-        <div style={{ marginBottom: '12px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#333' }}>
-            📝 최근 글 ({posts.length}개)
-          </h3>
+          <Link href="/calendar" style={{
+            display: 'inline-block',
+            background: 'white',
+            color: '#667eea',
+            padding: '12px 24px',
+            borderRadius: '12px',
+            textDecoration: 'none',
+            fontSize: '15px',
+            fontWeight: '600',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}>
+            📅 가족 캘린더
+          </Link>
         </div>
 
+        {/* 글 목록 */}
         {loading ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px',
-            color: '#888',
-          }}>
-            로딩 중...
+          <div style={{ textAlign: 'center', padding: '60px 0', color: '#999' }}>
+            불러오는 중...
           </div>
         ) : posts.length === 0 ? (
           <div style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '40px',
-            textAlign: 'center',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+            textAlign: 'center', padding: '60px 0',
+            background: 'white', borderRadius: '16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
           }}>
-            <div style={{ fontSize: '40px', marginBottom: '12px' }}>📭</div>
-            <p style={{ color: '#888', fontSize: '15px' }}>
+            <p style={{ fontSize: '48px', margin: '0 0 12px' }}>📝</p>
+            <p style={{ color: '#999', margin: 0 }}>
               아직 글이 없습니다. 첫 번째 글을 작성해보세요!
             </p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {posts.map((post) => (
-              <div
+              <Link
                 key={post.id}
-                onClick={() => router.push('/post/' + post.id)}
-                style={{
+                href={'/post/' + post.id}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <div style={{
                   background: 'white',
                   borderRadius: '16px',
                   padding: '20px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                   transition: 'transform 0.2s, box-shadow 0.2s',
+                  cursor: 'pointer'
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.06)';
-                }}
-              >
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  marginBottom: '8px',
-                }}>
-                  <h4 style={{
-                    fontSize: '16px',
-                    fontWeight: '700',
-                    color: '#1a1a2e',
-                    margin: 0,
-                    flex: 1,
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
+                  }}
+                >
+                  <h2 style={{
+                    margin: '0 0 8px', fontSize: '18px',
+                    fontWeight: '700', color: '#333'
                   }}>
-                    {post.title || '제목 없음'}
-                  </h4>
-                  <span style={{ fontSize: '20px', marginLeft: '8px' }}>
-                    {post.emoji || '👤'}
-                  </span>
+                    {post.title}
+                  </h2>
+                  <p style={{
+                    margin: '0 0 12px', fontSize: '14px',
+                    color: '#777', lineHeight: '1.6',
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical'
+                  }}>
+                    {post.content}
+                  </p>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', fontSize: '13px', color: '#aaa'
+                  }}>
+                    <span>{post.emoji} {post.author}</span>
+                    <span>{formatDate(post.createdAt)}</span>
+                  </div>
                 </div>
-                <p style={{
-                  color: '#888',
-                  fontSize: '14px',
-                  margin: 0,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {post.content
-                    ? post.content.substring(0, 80) + '...'
-                    : '내용 없음'}
-                </p>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginTop: '12px',
-                  fontSize: '12px',
-                  color: '#aaa',
-                }}>
-                  <span>{post.author || '익명'}</span>
-                  <span>
-                    {post.createdAt?.toDate
-                      ? post.createdAt.toDate().toLocaleDateString('ko-KR')
-                      : '날짜 없음'}
-                  </span>
-                </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }
