@@ -82,6 +82,7 @@ export default function LoginPage() {
           boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
         }}
       >
+        {/* 가족사진 슬라이드 */}
         <div
           style={{
             width: "100%",
@@ -139,6 +140,7 @@ export default function LoginPage() {
           </div>
         </div>
 
+        {/* 타이틀 */}
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <div style={{ fontSize: "40px", marginBottom: "8px" }}>🏠</div>
           <h1
@@ -155,6 +157,7 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* 가족 선택 */}
         <div
           style={{
             display: "grid",
@@ -195,6 +198,7 @@ export default function LoginPage() {
           ))}
         </div>
 
+        {/* 비밀번호 입력 */}
         <input
           type="password"
           placeholder="비밀번호를 입력하세요"
@@ -216,6 +220,7 @@ export default function LoginPage() {
           }}
         />
 
+        {/* 에러 메시지 */}
         {error && (
           <p
             style={{
@@ -229,6 +234,7 @@ export default function LoginPage() {
           </p>
         )}
 
+        {/* 로그인 버튼 */}
         <button
           onClick={handleLogin}
           style={{
