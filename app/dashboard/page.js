@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/lib/firebase';
+import { collection, getCountFromServer } from 'firebase/firestore';
 
 export default function DashboardPage() {
   const [user, setUser] = useState(null);
@@ -21,10 +22,13 @@ export default function DashboardPage() {
   }, [router]);
 
   const fetchPostCount = async () => {
-    const { count, error } = await supabase
-      .from('posts')
-      .select('*', { count: 'exact', head: true });
-    if (!error) setPostCount(count || 0);
+    try {
+      const coll = collection(db, 'posts');
+      const snapshot = await getCountFromServer(coll);
+      setPostCount(snapshot.data().count);
+    } catch (error) {
+      console.error('글 수 조회 실패:', error);
+    }
   };
 
   const handleLogout = () => {
@@ -49,16 +53,13 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-8">
-        {/* 환영 메시지 */}
         <div className="bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl p-6 text-white mb-8 shadow-lg">
           <p className="text-3xl mb-2">{user.emoji}</p>
           <h2 className="text-2xl font-bold mb-1">안녕하세요, {user.name}!</h2>
           <p className="text-blue-100 text-sm">오늘도 가족과 함께하는 하루 되세요 💕</p>
         </div>
 
-        {/* 메뉴 카드들 */}
         <div className="grid gap-4">
-          {/* 에세이 보기 */}
           <div className="bg-white rounded-2xl p-6 shadow-sm border-2 border-green-100 hover:border-green-300 transition-colors">
             <p className="text-3xl mb-3">📖</p>
             <h3 className="text-lg font-bold text-gray-800 mb-1">에세이 보기</h3>
@@ -69,7 +70,6 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {/* 글쓰기 */}
           <div className="bg-white rounded-2xl p-6 shadow-sm border-2 border-blue-100 hover:border-blue-300 transition-colors">
             <p className="text-3xl mb-3">✏️</p>
             <h3 className="text-lg font-bold text-gray-800 mb-1">새 글 쓰기</h3>

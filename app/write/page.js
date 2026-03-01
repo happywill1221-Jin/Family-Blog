@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 let blockId = 0;
 const newId = () => `b-${Date.now()}-${blockId++}`;
@@ -24,7 +25,6 @@ export default function WritePage() {
     setUser(JSON.parse(saved));
   }, [router]);
 
-  // textarea 자동 높이
   useEffect(() => {
     document.querySelectorAll('[data-auto]').forEach((el) => {
       el.style.height = 'auto';
@@ -94,7 +94,6 @@ export default function WritePage() {
     const removedIdx = blocks[blockIndex].imageIndex;
     let newBlocks = blocks.filter((_, i) => i !== blockIndex);
 
-    // 인접한 텍스트 블록 합치기
     const merged = [];
     for (const b of newBlocks) {
       if (b.type === 'text' && merged.length > 0 && merged[merged.length - 1].type === 'text') {
@@ -118,33 +117,38 @@ export default function WritePage() {
     setBlocks(reindexed);
   };
 
-  const blocksToContent = () =>
-    blocks
-      .map((b) => (b.type === 'image' ? `[IMG:${b.imageIndex}]` : b.value))
-      .join('\n')
-      .trim();
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const content = blocksToContent();
-    if (!title.trim() || !content) {
+    if (!title.trim() || blocks.every(b => b.type === 'text' && !b.value.trim())) {
       alert('제목과 내용을 입력해주세요.');
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from('posts').insert({
-      title: title.trim(),
-      content,
-      images,
-      author_name: user?.name || '익명',
-      author_emoji: user?.emoji || '👤',
-    });
-    if (error) {
-      alert('저장 실패: ' + error.message);
-      setSubmitting(false);
-    } else {
+
+    try {
+      // essays 페이지가 읽는 형식에 맞게 변환
+      const essayBlocks = blocks
+        .filter(b => b.type === 'image' || (b.type === 'text' && b.value.trim()))
+        .map(b => {
+          if (b.type === 'image') {
+            return { type: 'image', url: images[b.imageIndex] };
+          }
+          return { type: 'text', content: b.value };
+        });
+
+      await addDoc(collection(db, 'essays'), {
+        title: title.trim(),
+        blocks: essayBlocks,
+        author: user?.name || '익명',
+        authorEmoji: user?.emoji || '👤',
+        createdAt: serverTimestamp(),
+      });
+
       alert('글이 등록되었습니다! ✨');
       router.push('/essays');
+    } catch (error) {
+      alert('저장 실패: ' + error.message);
+      setSubmitting(false);
     }
   };
 
@@ -162,7 +166,6 @@ export default function WritePage() {
 
       <main className="max-w-3xl mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* 작성자 */}
           <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-purple-50 border-b">
             <p className="text-sm text-gray-600">
               {user.emoji} <strong>{user.name}</strong>(으)로 글쓰기
@@ -170,7 +173,6 @@ export default function WritePage() {
           </div>
 
           <form onSubmit={handleSubmit}>
-            {/* 제목 */}
             <input
               type="text"
               placeholder="제목을 입력하세요"
@@ -179,19 +181,16 @@ export default function WritePage() {
               className="w-full px-6 py-4 text-xl font-bold text-gray-800 placeholder-gray-300 border-b focus:outline-none"
             />
 
-            {/* 안내 바 */}
             <div className="px-6 py-2 border-b bg-gray-50 flex items-center justify-between">
               <p className="text-xs text-gray-500">📷 글 사이에 사진을 자유롭게 삽입하세요</p>
               <span className="text-xs text-gray-400">사진 {images.length}/10</span>
             </div>
 
-            {/* ★ 블록 에디터 ★ */}
             <div className="px-6 py-4 min-h-[300px]">
               {blocks.map((block, index) => (
                 <div key={block.id}>
                   {block.type === 'text' ? (
                     <div>
-                      {/* 텍스트 입력 */}
                       <textarea
                         data-auto
                         value={block.value}
@@ -204,7 +203,6 @@ export default function WritePage() {
                         className="w-full resize-none focus:outline-none text-gray-700 leading-relaxed overflow-hidden"
                         style={{ minHeight: '40px' }}
                       />
-                      {/* 📷 사진 추가 버튼 */}
                       {images.length < 10 && (
                         <div className="flex justify-center my-3">
                           <button
@@ -218,7 +216,6 @@ export default function WritePage() {
                       )}
                     </div>
                   ) : (
-                    /* 이미지 블록 — 본문에 실제 사진 표시 */
                     <div className="relative my-4 group">
                       <img
                         src={images[block.imageIndex]}
@@ -238,7 +235,6 @@ export default function WritePage() {
               ))}
             </div>
 
-            {/* 숨겨진 파일 입력 */}
             <input
               ref={fileInputRef}
               type="file"
@@ -248,7 +244,6 @@ export default function WritePage() {
               className="hidden"
             />
 
-            {/* 하단 버튼 */}
             <div className="px-6 py-4 border-t flex justify-end gap-3">
               <Link href="/essays" className="px-6 py-3 rounded-xl text-gray-500 hover:bg-gray-100">취소</Link>
               <button
