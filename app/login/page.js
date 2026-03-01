@@ -40,7 +40,7 @@ export default function LoginPage() {
     }
 
     try {
-      const docRef = doc(db, "settings", "password");
+      const docRef = doc(db, "config", "app");
       const docSnap = await getDoc(docRef);
 
       console.log("문서 존재 여부:", docSnap.exists());
@@ -48,7 +48,7 @@ export default function LoginPage() {
       console.log("입력한 비밀번호:", password);
 
       if (docSnap.exists()) {
-        const correctPassword = docSnap.data().value;
+        const correctPassword = docSnap.data().password;
         console.log("정답 비밀번호:", correctPassword);
         console.log("일치 여부:", password === correctPassword);
 
