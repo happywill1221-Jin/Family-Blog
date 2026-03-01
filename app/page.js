@@ -4,12 +4,18 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import {
+  collection, addDoc, query, orderBy, onSnapshot,
+  serverTimestamp, doc, updateDoc, arrayUnion, arrayRemove
+} from 'firebase/firestore';
 
 export default function HomePage() {
   const [user, setUser] = useState(null);
   const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [writing, setWriting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -19,34 +25,62 @@ export default function HomePage() {
       return;
     }
     setUser(JSON.parse(saved));
-  }, [router]);
 
-useEffect(() => {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q,
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPosts(list);
+    }, (error) => {
+      console.error('글 로드 에러:', error);
+      const q2 = query(collection(db, 'posts'));
+      onSnapshot(q2, (snapshot) => {
+        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setPosts(list);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('글 불러오기 에러:', error);
-        // orderBy 실패 시 정렬 없이 다시 시도
-        const q2 = query(collection(db, 'posts'));
-        onSnapshot(q2, (snapshot) => {
-          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          list.sort((a, b) => {
-            const ta = a.createdAt?.seconds || 0;
-            const tb = b.createdAt?.seconds || 0;
-            return tb - ta;
-          });
-          setPosts(list);
-          setLoading(false);
-        });
-      }
-    );
+      });
+    });
     return () => unsubscribe();
   }, []);
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !content.trim()) return;
+    setWriting(true);
+    try {
+      await addDoc(collection(db, 'posts'), {
+        title: title.trim(),
+        content: content.trim(),
+        author: user.name,
+        emoji: user.emoji,
+        authorId: user.id,
+        likes: [],
+        createdAt: serverTimestamp()
+      });
+      setTitle('');
+      setContent('');
+      setShowForm(false);
+    } catch (error) {
+      console.error(error);
+      alert('글 작성에 실패했습니다');
+    } finally {
+      setWriting(false);
+    }
+  };
+
+  const handleToggleLike = async (e, postId, currentLikes) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      const postRef = doc(db, 'posts', postId);
+      const likesArray = currentLikes || [];
+      if (likesArray.includes(user.id)) {
+        await updateDoc(postRef, { likes: arrayRemove(user.id) });
+      } else {
+        await updateDoc(postRef, { likes: arrayUnion(user.id) });
+      }
+    } catch (error) {
+      console.error('좋아요 에러:', error);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -56,8 +90,13 @@ useEffect(() => {
   const formatDate = (timestamp) => {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    if (diff < 60000) return '방금 전';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}분 전`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}시간 전`;
     return date.toLocaleDateString('ko-KR', {
-      year: 'numeric', month: 'long', day: 'numeric'
+      month: 'long', day: 'numeric'
     });
   };
 
@@ -68,139 +107,184 @@ useEffect(() => {
       {/* 헤더 */}
       <div style={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '24px 20px', color: 'white'
+        padding: '20px', color: 'white'
       }}>
         <div style={{
-          maxWidth: '800px', margin: '0 auto',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'center', marginBottom: '16px'
         }}>
-          <div>
-            <h1 style={{ margin: '0 0 4px', fontSize: '22px' }}>🏠 우리 가족 블로그</h1>
-            <p style={{ margin: 0, fontSize: '14px', opacity: 0.9 }}>
-              {user.emoji} {user.name} 로그인 중
-            </p>
+          <h1 style={{ margin: 0, fontSize: '20px' }}>🏠 우리 가족 블로그</h1>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <Link href="/family" style={{
+              background: 'rgba(255,255,255,0.2)', color: 'white',
+              padding: '8px 16px', borderRadius: '8px',
+              textDecoration: 'none', fontSize: '14px'
+            }}>👨‍👩‍👧‍👦 가족</Link>
+            <span style={{ fontSize: '14px' }}>{user.emoji} {user.name}</span>
+            <button onClick={handleLogout} style={{
+              background: 'rgba(255,255,255,0.2)', border: 'none',
+              color: 'white', padding: '6px 12px', borderRadius: '8px',
+              cursor: 'pointer', fontSize: '12px'
+            }}>로그아웃</button>
           </div>
-          <button onClick={handleLogout} style={{
-            background: 'rgba(255,255,255,0.2)', color: 'white',
-            padding: '8px 16px', borderRadius: '8px', border: 'none',
-            cursor: 'pointer', fontSize: '13px'
-          }}>로그아웃</button>
         </div>
       </div>
 
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-        {/* 버튼 영역 */}
-        <div style={{
-          display: 'flex', gap: '12px', marginBottom: '20px',
-          flexWrap: 'wrap'
-        }}>
-          <Link href="/write" style={{
-            display: 'inline-block',
-            background: 'linear-gradient(135deg, #667eea, #764ba2)',
-            color: 'white',
-            padding: '12px 24px',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            fontSize: '15px',
-            fontWeight: '600',
-            boxShadow: '0 2px 8px rgba(102,126,234,0.4)'
+        {/* 글쓰기 버튼 */}
+        {!showForm && (
+          <button onClick={() => setShowForm(true)} style={{
+            width: '100%', padding: '16px', marginBottom: '20px',
+            background: 'white', border: '2px dashed #ddd',
+            borderRadius: '16px', fontSize: '15px', color: '#999',
+            cursor: 'pointer'
           }}>
-            ✏️ 새 글 쓰기
-          </Link>
+            ✏️ 새 글 작성하기...
+          </button>
+        )}
 
-          <Link href="/calendar" style={{
-            display: 'inline-block',
-            background: 'white',
-            color: '#667eea',
-            padding: '12px 24px',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            fontSize: '15px',
-            fontWeight: '600',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+        {/* 글쓰기 폼 */}
+        {showForm && (
+          <div style={{
+            background: 'white', borderRadius: '16px', padding: '24px',
+            marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
           }}>
-            📅 가족 캘린더
-          </Link>
-
-          <Link href="/family" style={{
-  background: 'rgba(255,255,255,0.2)', color: 'white',
-  padding: '8px 16px', borderRadius: '8px',
-  textDecoration: 'none', fontSize: '14px'
-}}>👨‍👩‍👧‍👦 가족
-</Link>
-        </div>
+            <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '700' }}>
+              ✏️ 새 글 작성
+            </h3>
+            <input
+              type="text"
+              placeholder="제목을 입력하세요"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              style={{
+                width: '100%', padding: '12px', marginBottom: '12px',
+                border: '2px solid #e0e0e0', borderRadius: '10px',
+                fontSize: '15px', outline: 'none', boxSizing: 'border-box'
+              }}
+            />
+            <textarea
+              placeholder="내용을 입력하세요"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={5}
+              style={{
+                width: '100%', padding: '12px',
+                border: '2px solid #e0e0e0', borderRadius: '10px',
+                fontSize: '15px', resize: 'vertical', outline: 'none',
+                boxSizing: 'border-box', lineHeight: '1.6'
+              }}
+            />
+            <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+              <button onClick={handleSubmit} disabled={writing} style={{
+                padding: '10px 24px',
+                background: 'linear-gradient(135deg, #667eea, #764ba2)',
+                color: 'white', border: 'none', borderRadius: '10px',
+                fontSize: '14px', fontWeight: '600', cursor: 'pointer'
+              }}>{writing ? '작성 중...' : '✅ 작성하기'}</button>
+              <button onClick={() => setShowForm(false)} style={{
+                padding: '10px 24px', background: '#eee',
+                color: '#666', border: 'none', borderRadius: '10px',
+                fontSize: '14px', cursor: 'pointer'
+              }}>취소</button>
+            </div>
+          </div>
+        )}
 
         {/* 글 목록 */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px 0', color: '#999' }}>
-            불러오는 중...
-          </div>
-        ) : posts.length === 0 ? (
+        {posts.length === 0 ? (
           <div style={{
-            textAlign: 'center', padding: '60px 0',
-            background: 'white', borderRadius: '16px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+            textAlign: 'center', padding: '60px 20px', color: '#aaa'
           }}>
-            <p style={{ fontSize: '48px', margin: '0 0 12px' }}>📝</p>
-            <p style={{ color: '#999', margin: 0 }}>
-              아직 글이 없습니다. 첫 번째 글을 작성해보세요!
-            </p>
+            <p style={{ fontSize: '48px' }}>📝</p>
+            <p>아직 글이 없습니다. 첫 글을 작성해 보세요!</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {posts.map((post) => (
-              <Link
-                key={post.id}
-                href={'/post/' + post.id}
-                style={{ textDecoration: 'none', color: 'inherit' }}
-              >
-                <div style={{
-                  background: 'white',
-                  borderRadius: '16px',
-                  padding: '20px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  cursor: 'pointer'
-                }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)';
-                  }}
-                >
-                  <h2 style={{
-                    margin: '0 0 8px', fontSize: '18px',
-                    fontWeight: '700', color: '#333'
-                  }}>
-                    {post.title}
-                  </h2>
-                  <p style={{
-                    margin: '0 0 12px', fontSize: '14px',
-                    color: '#777', lineHeight: '1.6',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical'
-                  }}>
-                    {post.content}
-                  </p>
+            {posts.map((post) => {
+              const likesArray = post.likes || [];
+              const isLiked = user && likesArray.includes(user.id);
+              const likeCount = likesArray.length;
+
+              return (
+                <Link key={post.id} href={`/post/${post.id}`}
+                  style={{ textDecoration: 'none' }}>
                   <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', fontSize: '13px', color: '#aaa'
-                  }}>
-                    <Link href={`/profile/${post.authorId}`} style={{
-  textDecoration: 'none', color: '#667eea', fontWeight: '600'
-}}>
-  {post.emoji} {post.author}
-</Link>
-                    <span>{formatDate(post.createdAt)}</span>
+                    background: 'white', borderRadius: '16px',
+                    padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                    transition: 'transform 0.2s', cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'flex-start'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <h3 style={{
+                          margin: '0 0 8px', fontSize: '17px',
+                          fontWeight: '700', color: '#333'
+                        }}>
+                          {post.title}
+                        </h3>
+                        <p style={{
+                          margin: '0 0 12px', fontSize: '14px',
+                          color: '#888', lineHeight: '1.5',
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          display: '-webkit-box', WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical'
+                        }}>
+                          {post.content}
+                        </p>
+                      </div>
+                    </div>
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between',
+                      alignItems: 'center', fontSize: '13px', color: '#aaa'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <Link href={`/profile/${post.authorId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            textDecoration: 'none', color: '#667eea',
+                            fontWeight: '600', fontSize: '13px'
+                          }}>
+                          {post.emoji} {post.author}
+                        </Link>
+                        <span style={{ color: '#ccc' }}>{formatDate(post.createdAt)}</span>
+                      </div>
+
+                      {/* ★ 하트 버튼 */}
+                      <button
+                        onClick={(e) => handleToggleLike(e, post.id, post.likes)}
+                        style={{
+                          background: 'none', border: 'none',
+                          cursor: 'pointer', padding: '4px 8px',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                          fontSize: '14px', borderRadius: '20px',
+                          transition: 'background 0.2s',
+                          color: isLiked ? '#e74c3c' : '#ccc'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#fff0f0'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+                      >
+                        <span style={{ fontSize: '18px' }}>
+                          {isLiked ? '❤️' : '🤍'}
+                        </span>
+                        {likeCount > 0 && (
+                          <span style={{
+                            fontSize: '13px', fontWeight: '600',
+                            color: isLiked ? '#e74c3c' : '#bbb'
+                          }}>
+                            {likeCount}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@ import { db } from '@/lib/firebase';
 import {
   doc, getDoc, updateDoc, deleteDoc as deleteDocument,
   collection, addDoc, query, orderBy, onSnapshot,
-  serverTimestamp, deleteDoc
+  serverTimestamp, deleteDoc, arrayUnion, arrayRemove
 } from 'firebase/firestore';
 
 export default function PostDetailPage() {
@@ -21,6 +21,7 @@ export default function PostDetailPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [likeAnimating, setLikeAnimating] = useState(false);
 
   const router = useRouter();
   const params = useParams();
@@ -66,6 +67,36 @@ export default function PostDetailPage() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleLike = async () => {
+    if (!user || !post) return;
+    const postRef = doc(db, 'posts', params.id);
+    const likesArray = post.likes || [];
+    const isLiked = likesArray.includes(user.id);
+
+    // 애니메이션
+    setLikeAnimating(true);
+    setTimeout(() => setLikeAnimating(false), 400);
+
+    // 즉시 UI 반영 (optimistic update)
+    if (isLiked) {
+      setPost({ ...post, likes: likesArray.filter(id => id !== user.id) });
+    } else {
+      setPost({ ...post, likes: [...likesArray, user.id] });
+    }
+
+    try {
+      if (isLiked) {
+        await updateDoc(postRef, { likes: arrayRemove(user.id) });
+      } else {
+        await updateDoc(postRef, { likes: arrayUnion(user.id) });
+      }
+    } catch (error) {
+      console.error('좋아요 에러:', error);
+      // 실패 시 롤백
+      setPost({ ...post, likes: likesArray });
     }
   };
 
@@ -173,6 +204,17 @@ export default function PostDetailPage() {
   }
 
   const isAuthor = user && post.authorId === user.id;
+  const likesArray = post.likes || [];
+  const isLiked = user && likesArray.includes(user.id);
+  const likeCount = likesArray.length;
+
+  // 누가 눌렀는지 이름 표시용
+  const familyMembers = {
+    dad: { name: '아빠', emoji: '👨' },
+    mom: { name: '엄마', emoji: '👩' },
+    son: { name: '아들', emoji: '👦' },
+    daughter: { name: '딸', emoji: '👧' }
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
@@ -251,7 +293,6 @@ export default function PostDetailPage() {
                 paddingBottom: '16px', borderBottom: '1px solid #eee',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center'
               }}>
-                {/* ★ 작성자 클릭 → 프로필 이동 */}
                 <Link href={`/profile/${post.authorId}`} style={{
                   textDecoration: 'none', color: '#667eea', fontWeight: '600'
                 }}>
@@ -260,7 +301,7 @@ export default function PostDetailPage() {
                 <span style={{ color: '#ccc' }}>{formatDate(post.createdAt)}</span>
               </div>
 
-              {/* 수정/삭제 버튼 (작성자만) */}
+              {/* 수정/삭제 버튼 */}
               {isAuthor && (
                 <div style={{
                   display: 'flex', gap: '8px', marginBottom: '20px'
@@ -283,6 +324,70 @@ export default function PostDetailPage() {
                 color: '#444', whiteSpace: 'pre-wrap'
               }}>
                 {post.content}
+              </div>
+
+              {/* ★★★ 하트 영역 ★★★ */}
+              <div style={{
+                marginTop: '32px', paddingTop: '20px',
+                borderTop: '1px solid #eee',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: '12px'
+              }}>
+                <button
+                  onClick={handleToggleLike}
+                  style={{
+                    background: isLiked
+                      ? 'linear-gradient(135deg, #ff6b6b, #ee5a24)'
+                      : '#f8f9fa',
+                    border: isLiked ? 'none' : '2px solid #eee',
+                    borderRadius: '50px',
+                    padding: '14px 32px',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    transition: 'all 0.3s',
+                    transform: likeAnimating ? 'scale(1.2)' : 'scale(1)',
+                    boxShadow: isLiked ? '0 4px 15px rgba(255,107,107,0.4)' : 'none'
+                  }}
+                >
+                  <span style={{
+                    fontSize: '24px',
+                    transition: 'transform 0.3s',
+                    display: 'inline-block',
+                    transform: likeAnimating ? 'scale(1.3)' : 'scale(1)'
+                  }}>
+                    {isLiked ? '❤️' : '🤍'}
+                  </span>
+                  <span style={{
+                    fontSize: '16px', fontWeight: '700',
+                    color: isLiked ? 'white' : '#999'
+                  }}>
+                    {isLiked ? '좋아요 취소' : '좋아요'}
+                  </span>
+                </button>
+
+                {likeCount > 0 && (
+                  <div style={{
+                    fontSize: '13px', color: '#999',
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    flexWrap: 'wrap', justifyContent: 'center'
+                  }}>
+                    {likesArray.map((id) => {
+                      const m = familyMembers[id];
+                      return m ? (
+                        <span key={id} style={{
+                          background: '#fff0f0', padding: '4px 10px',
+                          borderRadius: '20px', fontSize: '12px',
+                          color: '#e74c3c', fontWeight: '600'
+                        }}>
+                          {m.emoji} {m.name}
+                        </span>
+                      ) : null;
+                    })}
+                    <span style={{ color: '#e74c3c', fontWeight: '600' }}>
+                      {likeCount}명이 좋아합니다
+                    </span>
+                  </div>
+                )}
               </div>
             </>
           )}
