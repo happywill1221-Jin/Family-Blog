@@ -2,19 +2,21 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export default function ChangePassword() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
 
     if (newPassword !== confirmPassword) {
       setError('새 비밀번호가 일치하지 않습니다.');
@@ -29,11 +31,19 @@ export default function ChangePassword() {
     setLoading(true);
 
     try {
-      // 1. Firestore에서 현재 비밀번호 확인
-      const configDoc = await getDoc(doc(db, 'config', 'app'));
-      const correctPassword = configDoc.exists()
-        ? configDoc.data().password
-        : '1234';
+      const configRef = doc(db, 'config', 'app');
+
+      // 1. 현재 비밀번호 확인
+      const configDoc = await getDoc(configRef);
+      if (!configDoc.exists()) {
+        setError('설정 문서를 찾을 수 없습니다.');
+        setLoading(false);
+        return;
+      }
+
+      const correctPassword = configDoc.data().password;
+      console.log('DB 비밀번호:', correctPassword);
+      console.log('입력한 현재 비밀번호:', currentPassword);
 
       if (currentPassword !== correctPassword) {
         setError('현재 비밀번호가 올바르지 않습니다.');
@@ -41,16 +51,28 @@ export default function ChangePassword() {
         return;
       }
 
-      // 2. Firestore의 비밀번호를 변경 ⭐ 핵심!
-      await setDoc(doc(db, 'config', 'app'), {
-  password: newPassword,
-}, { merge: true });
+      // 2. 비밀번호 변경 (updateDoc 사용)
+      await updateDoc(configRef, {
+        password: newPassword
+      });
 
-      alert('비밀번호가 변경되었습니다!');
-      router.push('/');
+      // 3. 변경 확인
+      const verifyDoc = await getDoc(configRef);
+      const updatedPassword = verifyDoc.data().password;
+      console.log('변경 후 DB 비밀번호:', updatedPassword);
+
+      if (updatedPassword === newPassword) {
+        setSuccess('비밀번호가 성공적으로 변경되었습니다! ✅');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        setTimeout(() => router.push('/'), 2000);
+      } else {
+        setError('변경이 저장되지 않았습니다. 다시 시도해주세요.');
+      }
     } catch (err) {
       console.error('비밀번호 변경 오류:', err);
-      setError('비밀번호 변경에 실패했습니다.');
+      setError(`오류 발생: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -97,6 +119,7 @@ export default function ChangePassword() {
                 outline: 'none',
                 background: 'var(--card)',
                 fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
           </div>
@@ -119,6 +142,7 @@ export default function ChangePassword() {
                 outline: 'none',
                 background: 'var(--card)',
                 fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
           </div>
@@ -141,6 +165,7 @@ export default function ChangePassword() {
                 outline: 'none',
                 background: 'var(--card)',
                 fontFamily: 'inherit',
+                boxSizing: 'border-box',
               }}
             />
           </div>
@@ -148,14 +173,30 @@ export default function ChangePassword() {
           {error && (
             <div style={{
               background: '#FFF5F5',
-              color: 'var(--danger)',
+              color: '#E53E3E',
               padding: '12px 16px',
               borderRadius: 'var(--radius-md)',
               fontSize: 14,
               marginBottom: 16,
               textAlign: 'center',
+              border: '1px solid #FED7D7',
             }}>
-              {error}
+              ❌ {error}
+            </div>
+          )}
+
+          {success && (
+            <div style={{
+              background: '#F0FFF4',
+              color: '#38A169',
+              padding: '12px 16px',
+              borderRadius: 'var(--radius-md)',
+              fontSize: 14,
+              marginBottom: 16,
+              textAlign: 'center',
+              border: '1px solid #C6F6D5',
+            }}>
+              {success}
             </div>
           )}
 
