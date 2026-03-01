@@ -17,8 +17,6 @@ export default function PostDetailPage() {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [sending, setSending] = useState(false);
-
-  // ★ 수정 모드 관련 state
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
@@ -71,14 +69,12 @@ export default function PostDetailPage() {
     }
   };
 
-  // ★ 글 수정 시작
   const handleEditStart = () => {
     setEditTitle(post.title);
     setEditContent(post.content);
     setIsEditing(true);
   };
 
-  // ★ 글 수정 저장
   const handleEditSave = async () => {
     if (!editTitle.trim() || !editContent.trim()) {
       alert('제목과 내용을 입력해주세요');
@@ -101,7 +97,6 @@ export default function PostDetailPage() {
     }
   };
 
-  // ★ 글 삭제
   const handleDeletePost = async () => {
     if (!confirm('정말 이 글을 삭제하시겠습니까?')) return;
     try {
@@ -177,7 +172,6 @@ export default function PostDetailPage() {
     );
   }
 
-  // ★ 현재 로그인 유저가 글 작성자인지 확인
   const isAuthor = user && post.authorId === user.id;
 
   return (
@@ -188,11 +182,18 @@ export default function PostDetailPage() {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center'
       }}>
         <h1 style={{ margin: 0, fontSize: '20px' }}>🏠 우리 가족 블로그</h1>
-        <Link href="/" style={{
-          background: 'rgba(255,255,255,0.2)', color: 'white',
-          padding: '8px 16px', borderRadius: '8px',
-          textDecoration: 'none', fontSize: '14px'
-        }}>← 목록으로</Link>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Link href="/family" style={{
+            background: 'rgba(255,255,255,0.2)', color: 'white',
+            padding: '8px 16px', borderRadius: '8px',
+            textDecoration: 'none', fontSize: '14px'
+          }}>👨‍👩‍👧‍👦 가족</Link>
+          <Link href="/" style={{
+            background: 'rgba(255,255,255,0.2)', color: 'white',
+            padding: '8px 16px', borderRadius: '8px',
+            textDecoration: 'none', fontSize: '14px'
+          }}>← 목록</Link>
+        </div>
       </div>
 
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
@@ -203,7 +204,6 @@ export default function PostDetailPage() {
           marginBottom: '20px'
         }}>
           {isEditing ? (
-            /* ★ 수정 모드 */
             <>
               <input
                 type="text"
@@ -242,7 +242,6 @@ export default function PostDetailPage() {
               </div>
             </>
           ) : (
-            /* 보기 모드 */
             <>
               <h1 style={{ margin: '0 0 12px', fontSize: '24px', color: '#333' }}>
                 {post.title}
@@ -252,24 +251,33 @@ export default function PostDetailPage() {
                 paddingBottom: '16px', borderBottom: '1px solid #eee',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center'
               }}>
-                <span>{post.emoji} {post.author} · {formatDate(post.createdAt)}</span>
-
-                {/* ★ 수정/삭제 버튼 (작성자만 보임) */}
-                {isAuthor && (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleEditStart} style={{
-                      background: '#f0f0f0', border: 'none',
-                      padding: '6px 14px', borderRadius: '8px',
-                      fontSize: '13px', cursor: 'pointer', color: '#555'
-                    }}>✏️ 수정</button>
-                    <button onClick={handleDeletePost} style={{
-                      background: '#fee', border: 'none',
-                      padding: '6px 14px', borderRadius: '8px',
-                      fontSize: '13px', cursor: 'pointer', color: '#e74c3c'
-                    }}>🗑️ 삭제</button>
-                  </div>
-                )}
+                {/* ★ 작성자 클릭 → 프로필 이동 */}
+                <Link href={`/profile/${post.authorId}`} style={{
+                  textDecoration: 'none', color: '#667eea', fontWeight: '600'
+                }}>
+                  {post.emoji} {post.author}
+                </Link>
+                <span style={{ color: '#ccc' }}>{formatDate(post.createdAt)}</span>
               </div>
+
+              {/* 수정/삭제 버튼 (작성자만) */}
+              {isAuthor && (
+                <div style={{
+                  display: 'flex', gap: '8px', marginBottom: '20px'
+                }}>
+                  <button onClick={handleEditStart} style={{
+                    background: '#f0f0f0', border: 'none',
+                    padding: '6px 14px', borderRadius: '8px',
+                    fontSize: '13px', cursor: 'pointer', color: '#555'
+                  }}>✏️ 수정</button>
+                  <button onClick={handleDeletePost} style={{
+                    background: '#fee', border: 'none',
+                    padding: '6px 14px', borderRadius: '8px',
+                    fontSize: '13px', cursor: 'pointer', color: '#e74c3c'
+                  }}>🗑️ 삭제</button>
+                </div>
+              )}
+
               <div style={{
                 fontSize: '16px', lineHeight: '1.8',
                 color: '#444', whiteSpace: 'pre-wrap'
@@ -303,9 +311,12 @@ export default function PostDetailPage() {
                     display: 'flex', justifyContent: 'space-between',
                     alignItems: 'center', marginBottom: '6px'
                   }}>
-                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#555' }}>
+                    <Link href={`/profile/${c.authorId}`} style={{
+                      fontSize: '13px', fontWeight: '600', color: '#667eea',
+                      textDecoration: 'none'
+                    }}>
                       {c.emoji} {c.author}
-                    </span>
+                    </Link>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '11px', color: '#bbb' }}>
                         {formatDate(c.createdAt)}

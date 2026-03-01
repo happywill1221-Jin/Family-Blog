@@ -121,6 +121,13 @@ useEffect(() => {
           }}>
             📅 가족 캘린더
           </Link>
+
+          <Link href="/family" style={{
+  background: 'rgba(255,255,255,0.2)', color: 'white',
+  padding: '8px 16px', borderRadius: '8px',
+  textDecoration: 'none', fontSize: '14px'
+}}>👨‍👩‍👧‍👦 가족
+</Link>
         </div>
 
         {/* 글 목록 */}
@@ -184,7 +191,11 @@ useEffect(() => {
                     display: 'flex', justifyContent: 'space-between',
                     alignItems: 'center', fontSize: '13px', color: '#aaa'
                   }}>
-                    <span>{post.emoji} {post.author}</span>
+                    <Link href={`/profile/${post.authorId}`} style={{
+  textDecoration: 'none', color: '#667eea', fontWeight: '600'
+}}>
+  {post.emoji} {post.author}
+</Link>
                     <span>{formatDate(post.createdAt)}</span>
                   </div>
                 </div>
