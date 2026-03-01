@@ -1,175 +1,289 @@
 'use client';
-
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useRouter, useParams } from 'next/navigation';
-import Link from 'next/link';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, deleteDoc } from 'firebase/firestore';
 
 export default function EssayDetailPage() {
-  const { id } = useParams();
   const router = useRouter();
+  const { id } = useParams();
+  const [user, setUser] = useState(null);
   const [essay, setEssay] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
 
   useEffect(() => {
-    fetchEssay();
-  }, [id]);
-
-  const fetchEssay = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('essays')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      setEssay(data);
-    } catch (error) {
-      console.error('에세이 불러오기 오류:', error);
-    } finally {
-      setLoading(false);
+    const stored = localStorage.getItem('user');
+    if (!stored) {
+      router.push('/login');
+      return;
     }
-  };
+    setUser(JSON.parse(stored));
+
+    const fetchEssay = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'essays', id));
+        if (!snap.exists()) {
+          setNotFound(true);
+        } else {
+          setEssay({ id: snap.id, ...snap.data() });
+        }
+      } catch (err) {
+        console.error('에세이 불러오기 실패:', err);
+        setNotFound(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEssay();
+  }, [id, router]);
+
+  /* ESC로 라이트박스 닫기 */
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setLightbox(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleDelete = async () => {
-    if (!confirm('정말 이 에세이를 삭제하시겠습니까?')) return;
-
+    if (!window.confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
     try {
-      if (essay.images && essay.images.length > 0) {
-        const fileNames = essay.images.map((url) => {
-          const parts = url.split('/');
-          return parts[parts.length - 1];
-        });
-        await supabase.storage.from('essay-images').remove(fileNames);
-      }
-
-      const { error } = await supabase.from('essays').delete().eq('id', id);
-      if (error) throw error;
-
-      alert('에세이가 삭제되었습니다.');
+      await deleteDoc(doc(db, 'essays', id));
       router.push('/essays');
-    } catch (error) {
-      console.error('삭제 오류:', error);
-      alert('삭제 중 오류가 발생했습니다.');
+    } catch (err) {
+      console.error('삭제 실패:', err);
+      alert('삭제에 실패했습니다.');
     }
   };
 
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      weekday: 'long',
-    });
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '';
+    try {
+      const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return d.toLocaleDateString('ko-KR', {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+      });
+    } catch {
+      return '';
+    }
   };
+
+  if (!user) return null;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-      </div>
-    );
-  }
-
-  if (!essay) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-6xl mb-4">😢</p>
-          <p className="text-gray-500 text-lg">에세이를 찾을 수 없습니다.</p>
-          <Link href="/essays" className="inline-block mt-4 text-blue-500">
-            ← 에세이 목록으로
-          </Link>
+      <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+        <nav style={{
+          height: 64, borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', padding: '0 24px',
+        }}>
+          <div className="skeleton" style={{ width: 80, height: 20, borderRadius: 8 }} />
+        </nav>
+        <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 20px' }}>
+          <div className="skeleton" style={{ height: 40, marginBottom: 16, borderRadius: 8 }} />
+          <div className="skeleton" style={{ height: 20, width: '60%', marginBottom: 40, borderRadius: 8 }} />
+          <div className="skeleton" style={{ height: 300, borderRadius: 12 }} />
         </div>
       </div>
     );
   }
 
-  const images = essay.images || [];
+  if (notFound) {
+    return (
+      <div style={{
+        minHeight: '100vh', background: 'var(--bg)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: 16,
+      }}>
+        <span style={{ fontSize: 64 }}>😢</span>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>에세이를 찾을 수 없습니다</h1>
+        <p style={{ color: 'var(--text-secondary)' }}>
+          삭제되었거나 존재하지 않는 글입니다.
+        </p>
+        <button
+          onClick={() => router.push('/essays')}
+          style={{
+            marginTop: 8,
+            background: 'var(--gradient)', color: 'white', border: 'none',
+            padding: '12px 28px', borderRadius: 'var(--radius-full)',
+            fontWeight: 600, cursor: 'pointer', fontSize: 15,
+            fontFamily: 'inherit',
+          }}
+        >
+          목록으로 돌아가기
+        </button>
+      </div>
+    );
+  }
+
+  const isOwner = user.name === essay.author;
+  const blocks = essay.blocks || [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/essays" className="text-gray-500 hover:text-gray-700 text-sm">
-            ← 에세이 목록
-          </Link>
-          <button
-            onClick={handleDelete}
-            className="text-red-400 hover:text-red-600 text-sm"
-          >
-            🗑️ 삭제
-          </button>
-        </div>
-      </header>
-
-      <article className="max-w-3xl mx-auto px-4 py-10">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-8 pt-10 pb-6 border-b border-gray-50">
-            <h1 className="text-3xl font-bold text-gray-800 leading-tight mb-4">
-              {essay.title}
-            </h1>
-            <div className="flex items-center gap-4 text-sm text-gray-400">
-              <span>✍️ {essay.author || '아빠'}</span>
-              <span>📅 {formatDate(essay.created_at)}</span>
-              {images.length > 0 && <span>🖼️ 사진 {images.length}장</span>}
-            </div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      {/* 네비게이션 */}
+      <nav style={{
+        position: 'sticky', top: 0, zIndex: 100,
+        background: 'rgba(250,250,248,0.8)', backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid var(--border)',
+        padding: '0 24px', height: 64,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        animation: 'slideDown 0.6s ease',
+      }}>
+        <button
+          onClick={() => router.push('/essays')}
+          style={{
+            background: 'none', border: 'none',
+            display: 'flex', alignItems: 'center', gap: 8,
+            cursor: 'pointer', fontSize: 15, fontWeight: 600,
+            color: 'var(--text)', fontFamily: 'inherit',
+          }}
+        >
+          <span style={{ fontSize: 20 }}>←</span> 목록
+        </button>
+        {isOwner && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => router.push(`/edit/${id}`)}
+              style={{
+                background: 'var(--card)', border: '1px solid var(--border)',
+                padding: '8px 16px', borderRadius: 'var(--radius-full)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'var(--transition)', fontFamily: 'inherit',
+              }}
+            >
+              ✏️ 수정
+            </button>
+            <button
+              onClick={handleDelete}
+              style={{
+                background: 'var(--card)', border: '1px solid var(--border)',
+                padding: '8px 16px', borderRadius: 'var(--radius-full)',
+                fontSize: 13, fontWeight: 500, cursor: 'pointer',
+                transition: 'var(--transition)', color: 'var(--danger)',
+                fontFamily: 'inherit',
+              }}
+            >
+              🗑️ 삭제
+            </button>
           </div>
+        )}
+      </nav>
 
-          <div className="px-8 py-8">
-            <div className="text-gray-700 leading-loose text-lg whitespace-pre-wrap">
-              {essay.content}
-            </div>
+      {/* 본문 */}
+      <article style={{
+        maxWidth: 720, margin: '0 auto', padding: '40px 20px 80px',
+        animation: 'slideUp 0.7s ease',
+      }}>
+        {/* 제목 */}
+        <h1 style={{
+          fontSize: 'clamp(28px, 5vw, 40px)',
+          fontWeight: 900, lineHeight: 1.3,
+          letterSpacing: '-0.02em', marginBottom: 16,
+        }}>
+          {essay.title}
+        </h1>
+
+        {/* 작성자 정보 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginBottom: 40, paddingBottom: 24,
+          borderBottom: '1px solid var(--border)',
+        }}>
+          <span style={{
+            fontSize: 32, width: 48, height: 48,
+            background: '#f5f5f5', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {essay.authorEmoji || '👤'}
+          </span>
+          <div>
+            <p style={{ fontWeight: 600, fontSize: 15 }}>{essay.author}</p>
+            <p style={{ fontSize: 13, color: 'var(--text-light)' }}>
+              {formatDate(essay.createdAt)}
+            </p>
           </div>
-
-          {images.length > 0 && (
-            <div className="px-8 pb-10">
-              <div className="border-t border-gray-100 pt-8">
-                <h3 className="text-sm font-medium text-gray-400 mb-4">📷 첨부된 사진</h3>
-                <div className={`grid gap-3 ${
-                  images.length === 1
-                    ? 'grid-cols-1'
-                    : 'grid-cols-2'
-                }`}>
-                  {images.map((url, index) => (
-                    <div
-                      key={index}
-                      className="cursor-pointer overflow-hidden rounded-xl"
-                      onClick={() => setSelectedImage(url)}
-                    >
-                      <img
-                        src={url}
-                        alt={`사진 ${index + 1}`}
-                        className="w-full h-64 object-cover hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* 블록 렌더링 */}
+        {blocks.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '40px 20px',
+            color: 'var(--text-light)',
+          }}>
+            <p>내용이 없습니다.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {blocks.map((block) => {
+              if (block.type === 'text') {
+                return (
+                  <div key={block.id} style={{
+                    fontSize: 16, lineHeight: 1.9,
+                    color: 'var(--text)',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'keep-all',
+                  }}>
+                    {block.content}
+                  </div>
+                );
+              }
+              if (block.type === 'image') {
+                return (
+                  <figure key={block.id} style={{ margin: 0 }}>
+                    <img
+                      src={block.url}
+                      alt={block.caption || ''}
+                      onClick={() => setLightbox(block.url)}
+                      style={{
+                        width: '100%',
+                        borderRadius: 'var(--radius-xl)',
+                        cursor: 'zoom-in',
+                        transition: 'var(--transition)',
+                      }}
+                    />
+                    {block.caption && (
+                      <figcaption style={{
+                        textAlign: 'center',
+                        fontSize: 13,
+                        color: 'var(--text-light)',
+                        marginTop: 8,
+                      }}>
+                        {block.caption}
+                      </figcaption>
+                    )}
+                  </figure>
+                );
+              }
+              return null;
+            })}
+          </div>
+        )}
       </article>
 
-      {selectedImage && (
+      {/* 라이트박스 */}
+      {lightbox && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedImage(null)}
+          onClick={() => setLightbox(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.9)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'fadeIn 0.3s ease',
+            cursor: 'zoom-out',
+            padding: 20,
+          }}
         >
-          <button
-            onClick={() => setSelectedImage(null)}
-            className="absolute top-6 right-6 text-white text-2xl hover:text-gray-300"
-          >
-            ✕
-          </button>
           <img
-            src={selectedImage}
-            alt="확대 보기"
-            className="max-w-full max-h-full object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
+            src={lightbox}
+            alt=""
+            style={{
+              maxWidth: '90vw', maxHeight: '90vh',
+              objectFit: 'contain', borderRadius: 8,
+            }}
           />
         </div>
       )}

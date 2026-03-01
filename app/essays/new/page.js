@@ -1,25 +1,22 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { db, storage } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-export default function EditEssayPage() {
+export default function NewEssayPage() {
   const router = useRouter();
-  const { id } = useParams();
   const [user, setUser] = useState(null);
   const [title, setTitle] = useState('');
-  const [blocks, setBlocks] = useState([]);
+  const [blocks, setBlocks] = useState([{ id: uid(), type: 'text', content: '' }]);
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const textareaRefs = useRef({});
   const fileInputRef = useRef(null);
   const blocksRef = useRef(blocks);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => { blocksRef.current = blocks; }, [blocks]);
 
@@ -29,53 +26,8 @@ export default function EditEssayPage() {
       router.push('/login');
       return;
     }
-    const userData = JSON.parse(stored);
-    setUser(userData);
-
-    const fetchEssay = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'essays', id));
-        if (!snap.exists()) {
-          alert('에세이를 찾을 수 없습니다.');
-          router.push('/essays');
-          return;
-        }
-        const data = snap.data();
-        if (data.author !== userData.name) {
-          alert('본인의 글만 수정할 수 있습니다.');
-          router.push(`/essays/${id}`);
-          return;
-        }
-        setTitle(data.title || '');
-        setBlocks(data.blocks && data.blocks.length > 0
-          ? data.blocks.map(b => ({ ...b, id: b.id || uid() }))
-          : [{ id: uid(), type: 'text', content: '' }]
-        );
-        setLoaded(true);
-      } catch (err) {
-        console.error('에세이 불러오기 실패:', err);
-        alert('에세이를 불러오는데 실패했습니다.');
-        router.push('/essays');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchEssay();
-  }, [id, router]);
-
-  /* 텍스트 영역 초기 높이 설정 */
-  useEffect(() => {
-    if (loaded) {
-      requestAnimationFrame(() => {
-        Object.values(textareaRefs.current).forEach(el => {
-          if (el) {
-            el.style.height = 'auto';
-            el.style.height = el.scrollHeight + 'px';
-          }
-        });
-      });
-    }
-  }, [loaded]);
+    setUser(JSON.parse(stored));
+  }, [router]);
 
   const addTextBlock = () => {
     setBlocks(prev => [...prev, { id: uid(), type: 'text', content: '' }]);
@@ -162,37 +114,23 @@ export default function EditEssayPage() {
         .filter(b => (b.type === 'text' && b.content.trim()) || (b.type === 'image' && b.url))
         .map(({ uploading, ...rest }) => rest);
 
-      await updateDoc(doc(db, 'essays', id), {
+      const docRef = await addDoc(collection(db, 'essays'), {
         title: title.trim(),
         blocks: blocksToSave,
+        author: user.name,
+        authorEmoji: user.emoji,
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      router.push(`/essays/${id}`);
+      router.push(`/essays/${docRef.id}`);
     } catch (err) {
-      console.error('수정 실패:', err);
-      setError('수정에 실패했습니다. 다시 시도해주세요.');
+      console.error('저장 실패:', err);
+      setError('저장에 실패했습니다. 다시 시도해주세요.');
       setSaving(false);
     }
   };
 
   if (!user) return null;
-
-  if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-        <nav style={{
-          height: 64, borderBottom: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', padding: '0 24px',
-        }}>
-          <div className="skeleton" style={{ width: 80, height: 20, borderRadius: 8 }} />
-        </nav>
-        <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 20px' }}>
-          <div className="skeleton" style={{ height: 40, marginBottom: 32, borderRadius: 8 }} />
-          <div className="skeleton" style={{ height: 200, borderRadius: 12 }} />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
@@ -207,8 +145,10 @@ export default function EditEssayPage() {
       }}>
         <button
           onClick={() => {
-            if (!window.confirm('수정 중인 내용이 있습니다. 나가시겠습니까?')) return;
-            router.push(`/essays/${id}`);
+            if (title || blocks.some(b => b.content || b.url)) {
+              if (!window.confirm('작성 중인 내용이 있습니다. 나가시겠습니까?')) return;
+            }
+            router.push('/essays');
           }}
           style={{
             background: 'none', border: 'none',
@@ -238,7 +178,7 @@ export default function EditEssayPage() {
               저장 중...
             </>
           ) : (
-            '수정 완료 ✨'
+            '발행하기 ✨'
           )}
         </button>
       </nav>
