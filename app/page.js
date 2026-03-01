@@ -9,6 +9,10 @@ import {
   serverTimestamp, doc, updateDoc, arrayUnion, arrayRemove
 } from 'firebase/firestore';
 import { CATEGORIES, getCategoryById } from '@/lib/categories';
+import {
+  getUserName, getUserEmoji, getUserId,
+  getAuthorName, getAuthorEmoji, getAuthorId
+} from '@/lib/user';
 
 /* ── 썸네일용 그라데이션 팔레트 ── */
 const PALETTES = [
@@ -57,12 +61,17 @@ export default function HomePage() {
       setPosts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     }, () => {
       const q2 = query(collection(db, 'posts'));
-      onSnapshot(q2, (snapshot) => {
-        setPosts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      onSnapshot(q2, (snap) => {
+        setPosts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       });
     });
     return () => unsubscribe();
   }, []);
+
+  /* ── 현재 유저 정보 (안전 추출) ── */
+  const currentName = getUserName(user);
+  const currentEmoji = getUserEmoji(user);
+  const currentId = getUserId(user);
 
   const filteredPosts = filterCat === 'all'
     ? posts
@@ -76,9 +85,9 @@ export default function HomePage() {
         title: title.trim(),
         content: content.trim(),
         category,
-        author: user.name,
-        emoji: user.emoji,
-        authorId: user.id,
+        author: currentName,
+        emoji: currentEmoji,
+        authorId: currentId,
         likes: [],
         createdAt: serverTimestamp()
       });
@@ -89,14 +98,14 @@ export default function HomePage() {
 
   const handleToggleLike = async (e, postId, currentLikes) => {
     e.preventDefault(); e.stopPropagation();
-    if (!user) return;
+    if (!currentId) return;
     try {
       const ref = doc(db, 'posts', postId);
       const arr = currentLikes || [];
-      if (arr.includes(user.id)) {
-        await updateDoc(ref, { likes: arrayRemove(user.id) });
+      if (arr.includes(currentId)) {
+        await updateDoc(ref, { likes: arrayRemove(currentId) });
       } else {
-        await updateDoc(ref, { likes: arrayUnion(user.id) });
+        await updateDoc(ref, { likes: arrayUnion(currentId) });
       }
     } catch (err) { console.error(err); }
   };
@@ -147,7 +156,7 @@ export default function HomePage() {
               padding: '8px 16px', borderRadius: '8px',
               textDecoration: 'none', fontSize: '14px'
             }}>👨‍👩‍👧‍👦 가족</Link>
-            <span style={{ fontSize: '14px' }}>{user.emoji} {user.name}</span>
+            <span style={{ fontSize: '14px' }}>{currentEmoji} {currentName}</span>
             <button onClick={handleLogout} style={{
               background: 'rgba(255,255,255,0.2)', border: 'none',
               color: 'white', padding: '6px 12px', borderRadius: '8px',
@@ -175,10 +184,7 @@ export default function HomePage() {
             boxShadow: filterCat === 'all' ? '0 4px 12px rgba(102,126,234,0.35)' : '0 1px 4px rgba(0,0,0,0.06)',
             transition: 'all 0.2s'
           }}>
-            🏷️ 전체 <span style={{
-              marginLeft: '4px', fontSize: '11px',
-              opacity: 0.8
-            }}>({posts.length})</span>
+            🏷️ 전체 <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.8 }}>({posts.length})</span>
           </button>
           {CATEGORIES.map(cat => {
             const count = catCounts[cat.id] || 0;
@@ -196,9 +202,7 @@ export default function HomePage() {
               }}>
                 {cat.emoji} {cat.label}
                 {count > 0 && (
-                  <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.8 }}>
-                    ({count})
-                  </span>
+                  <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.8 }}>({count})</span>
                 )}
               </button>
             );
@@ -227,7 +231,7 @@ export default function HomePage() {
             marginBottom: '28px', boxShadow: '0 4px 20px rgba(0,0,0,0.06)'
           }}>
             <h3 style={{ margin: '0 0 18px', fontSize: '16px', fontWeight: '700' }}>
-              ✏️ 새 글 작성
+              ✏️ 새 글 작성 <span style={{ fontSize: '13px', fontWeight: '500', color: '#999' }}>— {currentEmoji} {currentName}</span>
             </h3>
 
             {/* 카테고리 선택 */}
@@ -316,10 +320,13 @@ export default function HomePage() {
           }}>
             {filteredPosts.map((post) => {
               const likesArr = post.likes || [];
-              const isLiked = user && likesArr.includes(user.id);
+              const isLiked = currentId && likesArr.includes(currentId);
               const likeCount = likesArr.length;
               const thumb = getThumbnail(post.id);
               const cat = getCategoryById(post.category);
+              const postAuthor = getAuthorName(post);
+              const postEmoji = getAuthorEmoji(post);
+              const postAuthorId = getAuthorId(post);
 
               return (
                 <Link key={post.id} href={`/post/${post.id}`} style={{ textDecoration: 'none' }}>
@@ -369,7 +376,7 @@ export default function HomePage() {
                         🕐 {getReadTime(post.content)} 읽기
                       </div>
 
-                      {/* 카테고리 태그 (썸네일 우상단) */}
+                      {/* 카테고리 태그 */}
                       <div style={{
                         position: 'absolute', bottom: '12px', right: '12px',
                         background: 'rgba(255,255,255,0.92)',
@@ -405,7 +412,7 @@ export default function HomePage() {
                         fontSize: '22px', boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
                         border: '3px solid white', zIndex: 2
                       }}>
-                        {post.emoji}
+                        {postEmoji}
                       </div>
                     </div>
 
@@ -415,13 +422,13 @@ export default function HomePage() {
                         display: 'flex', alignItems: 'center', gap: '8px',
                         marginBottom: '10px', paddingLeft: '36px'
                       }}>
-                        <Link href={`/profile/${post.authorId}`}
+                        <Link href={`/profile/${postAuthorId}`}
                           onClick={e => e.stopPropagation()}
                           style={{
                             textDecoration: 'none', color: '#667eea',
                             fontWeight: '700', fontSize: '13px'
                           }}>
-                          {post.author}
+                          {postAuthor}
                         </Link>
                         <span style={{ color: '#d0d0d0', fontSize: '13px' }}>·</span>
                         <span style={{ color: '#bbb', fontSize: '12px' }}>
