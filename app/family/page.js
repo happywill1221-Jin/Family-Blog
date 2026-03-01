@@ -1,128 +1,145 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-
-const familyMembers = [
-  { id: 'dad', name: '아빠', emoji: '👨' },
-  { id: 'mom', name: '엄마', emoji: '👩' },
-  { id: 'son', name: '아들', emoji: '👦' },
-  { id: 'daughter', name: '딸', emoji: '👧' },
-];
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 export default function FamilyPage() {
   const [user, setUser] = useState(null);
-  const [postCounts, setPostCounts] = useState({});
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   useEffect(() => {
     const saved = localStorage.getItem('user');
-    if (!saved) {
-      router.push('/login');
-      return;
-    }
+    if (!saved) { window.location.href = '/login'; return; }
     setUser(JSON.parse(saved));
-    fetchPostCounts();
+    fetchMembers();
   }, []);
 
-  const fetchPostCounts = async () => {
+  const fetchMembers = async () => {
     try {
-      const counts = {};
-      for (const member of familyMembers) {
-        const q = query(collection(db, 'posts'), where('authorId', '==', member.id));
-        const snapshot = await getDocs(q);
-        counts[member.id] = snapshot.size;
+      const snap = await getDocs(collection(db, 'users'));
+      const list = [];
+      for (const d of snap.docs) {
+        const data = d.data();
+        const postsSnap = await getDocs(
+          query(collection(db, 'posts'), where('authorId', '==', d.id))
+        );
+        list.push({ id: d.id, ...data, postCount: postsSnap.size });
       }
-      setPostCounts(counts);
-    } catch (error) {
-      console.error('멤버 글 수 로드 에러:', error);
-    } finally {
-      setLoading(false);
-    }
+      setMembers(list);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   };
 
-  if (!user) return null;
+  const colors = [
+    { bg: '#fff3e0', color: '#e65100', border: '#ffcc80' },
+    { bg: '#e8f5e9', color: '#2e7d32', border: '#a5d6a7' },
+    { bg: '#e3f2fd', color: '#1565c0', border: '#90caf9' },
+    { bg: '#fce4ec', color: '#c62828', border: '#ef9a9a' },
+    { bg: '#f3e5f5', color: '#6a1b9a', border: '#ce93d8' },
+    { bg: '#fff8e1', color: '#f57f17', border: '#ffe082' },
+  ];
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+      <div style={{ textAlign: 'center' }}>
+        <p style={{ fontSize: '40px', marginBottom: '12px' }}>👨‍👩‍👧‍👦</p>
+        <p style={{ color: '#999' }}>가족 정보를 불러오는 중...</p>
+      </div>
+    </div>
+  );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       {/* 헤더 */}
       <div style={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '20px', color: 'white',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        padding: '20px', color: 'white', textAlign: 'center'
       }}>
-        <h1 style={{ margin: 0, fontSize: '20px' }}>👨‍👩‍👧‍👦 우리 가족</h1>
-        <Link href="/" style={{
-          background: 'rgba(255,255,255,0.2)', color: 'white',
-          padding: '8px 16px', borderRadius: '8px',
-          textDecoration: 'none', fontSize: '14px'
-        }}>← 홈으로</Link>
+        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <a href="/" style={{ color: 'white', textDecoration: 'none', fontSize: '15px', fontWeight: '600' }}>← 홈</a>
+            <a href="/calendar" style={{ color: 'rgba(255,255,255,0.85)', textDecoration: 'none', fontSize: '13px' }}>📅 캘린더</a>
+          </div>
+          <p style={{ fontSize: '48px', marginBottom: '8px' }}>👨‍👩‍👧‍👦</p>
+          <h1 style={{ margin: '0 0 8px', fontSize: '24px', fontWeight: '800' }}>우리 가족 소개</h1>
+          <p style={{ margin: 0, fontSize: '14px', opacity: 0.85 }}>소중한 우리 가족 구성원들이에요</p>
+        </div>
       </div>
 
-      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px' }}>
-        <p style={{ textAlign: 'center', color: '#888', marginBottom: '24px', fontSize: '14px' }}>
-          가족 멤버를 클릭하면 작성한 글을 모아볼 수 있어요!
-        </p>
-
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '24px 16px' }}>
+        {/* 가족 통계 */}
         <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px'
+          background: 'white', borderRadius: '20px', padding: '24px',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.06)', marginBottom: '20px', textAlign: 'center'
         }}>
-          {familyMembers.map((member) => {
-            const isMe = user.id === member.id;
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '32px' }}>
+            <div>
+              <p style={{ fontSize: '28px', fontWeight: '800', color: '#667eea', margin: '0' }}>{members.length}</p>
+              <p style={{ fontSize: '13px', color: '#999', margin: '4px 0 0' }}>가족 구성원</p>
+            </div>
+            <div>
+              <p style={{ fontSize: '28px', fontWeight: '800', color: '#764ba2', margin: '0' }}>
+                {members.reduce((sum, m) => sum + (m.postCount || 0), 0)}
+              </p>
+              <p style={{ fontSize: '13px', color: '#999', margin: '4px 0 0' }}>전체 게시글</p>
+            </div>
+          </div>
+        </div>
+
+        {/* 가족 구성원 목록 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {members.map((member, idx) => {
+            const c = colors[idx % colors.length];
             return (
-              <Link key={member.id} href={`/profile/${member.id}`}
-                style={{ textDecoration: 'none' }}>
+              <a key={member.id} href={'/profile/' + member.id} style={{ textDecoration: 'none' }}>
                 <div style={{
-                  background: isMe
-                    ? 'linear-gradient(135deg, #f0f0ff 0%, #fce4ff 100%)'
-                    : 'white',
-                  borderRadius: '20px', padding: '28px 20px',
-                  textAlign: 'center',
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-                  transition: 'transform 0.2s, box-shadow 0.2s',
-                  cursor: 'pointer',
-                  border: isMe ? '2px solid #667eea' : '2px solid transparent'
+                  background: 'white', borderRadius: '20px', padding: '24px',
+                  boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+                  display: 'flex', alignItems: 'center', gap: '16px',
+                  border: '2px solid ' + c.border, cursor: 'pointer',
+                  transition: 'transform 0.2s'
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)';
-                }}>
-                  <div style={{ fontSize: '52px', marginBottom: '12px' }}>
-                    {member.emoji}
-                  </div>
+                  onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+                >
                   <div style={{
-                    fontSize: '18px', fontWeight: '700', color: '#333',
-                    marginBottom: '8px'
-                  }}>
-                    {member.name}
+                    width: '64px', height: '64px', borderRadius: '50%', background: c.bg,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '32px', flexShrink: 0
+                  }}>{member.emoji || '👤'}</div>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: '700', color: '#1a1a2e' }}>
+                      {member.name}
+                    </h3>
+                    {member.role && (
+                      <span style={{
+                        display: 'inline-block', padding: '3px 10px', borderRadius: '12px',
+                        background: c.bg, color: c.color, fontSize: '12px', fontWeight: '600'
+                      }}>{member.role}</span>
+                    )}
+                    <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#999' }}>
+                      게시글 {member.postCount || 0}개 작성
+                    </p>
                   </div>
-                  {isMe && (
-                    <div style={{
-                      fontSize: '11px', color: '#667eea', fontWeight: '600',
-                      marginBottom: '8px'
-                    }}>✨ 나</div>
-                  )}
-                  <div style={{
-                    fontSize: '13px', color: '#888',
-                    background: 'rgba(102,126,234,0.1)',
-                    borderRadius: '20px', padding: '6px 14px',
-                    display: 'inline-block'
-                  }}>
-                    📝 {loading ? '..' : (postCounts[member.id] || 0)}개의 글
-                  </div>
+                  <span style={{ fontSize: '20px', color: '#ccc' }}>›</span>
                 </div>
-              </Link>
+              </a>
             );
           })}
         </div>
+
+        {members.length === 0 && (
+          <div style={{
+            background: 'white', borderRadius: '20px', padding: '40px',
+            textAlign: 'center', boxShadow: '0 2px 16px rgba(0,0,0,0.06)'
+          }}>
+            <p style={{ fontSize: '40px', marginBottom: '12px' }}>🏠</p>
+            <p style={{ color: '#999' }}>아직 등록된 가족이 없어요</p>
+            <p style={{ color: '#ccc', fontSize: '13px' }}>가족들이 회원가입하면 여기에 표시됩니다</p>
+          </div>
+        )}
       </div>
     </div>
   );

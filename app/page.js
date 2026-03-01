@@ -68,7 +68,6 @@ export default function HomePage() {
     return () => unsubscribe();
   }, []);
 
-  /* ── 현재 유저 정보 (안전 추출) ── */
   const currentName = getUserName(user);
   const currentEmoji = getUserEmoji(user);
   const currentId = getUserId(user);
@@ -129,7 +128,6 @@ export default function HomePage() {
     return `${min}분`;
   };
 
-  /* ── 카테고리별 글 수 ── */
   const catCounts = {};
   posts.forEach(p => {
     const cid = p.category || 'etc';
@@ -156,6 +154,11 @@ export default function HomePage() {
               padding: '8px 16px', borderRadius: '8px',
               textDecoration: 'none', fontSize: '14px'
             }}>👨‍👩‍👧‍👦 가족</Link>
+            <Link href="/calendar" style={{
+              background: 'rgba(255,255,255,0.2)', color: 'white',
+              padding: '8px 16px', borderRadius: '8px',
+              textDecoration: 'none', fontSize: '14px'
+            }}>📅 캘린더</Link>
             <span style={{ fontSize: '14px' }}>{currentEmoji} {currentName}</span>
             <button onClick={handleLogout} style={{
               background: 'rgba(255,255,255,0.2)', border: 'none',
@@ -234,7 +237,6 @@ export default function HomePage() {
               ✏️ 새 글 작성 <span style={{ fontSize: '13px', fontWeight: '500', color: '#999' }}>— {currentEmoji} {currentName}</span>
             </h3>
 
-            {/* 카테고리 선택 */}
             <div style={{ marginBottom: '14px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
                 🏷️ 카테고리
@@ -366,7 +368,6 @@ export default function HomePage() {
                         filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))'
                       }}>{thumb.icon}</span>
 
-                      {/* 읽기 시간 배지 */}
                       <div style={{
                         position: 'absolute', top: '12px', left: '12px',
                         background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(4px)',
@@ -376,7 +377,6 @@ export default function HomePage() {
                         🕐 {getReadTime(post.content)} 읽기
                       </div>
 
-                      {/* 카테고리 태그 */}
                       <div style={{
                         position: 'absolute', bottom: '12px', right: '12px',
                         background: 'rgba(255,255,255,0.92)',
@@ -389,7 +389,6 @@ export default function HomePage() {
                         {cat.emoji} {cat.label}
                       </div>
 
-                      {/* 좋아요 배지 */}
                       {likeCount > 0 && (
                         <div style={{
                           position: 'absolute', top: '12px', right: '12px',
@@ -403,7 +402,6 @@ export default function HomePage() {
                         </div>
                       )}
 
-                      {/* 작성자 아바타 */}
                       <div style={{
                         position: 'absolute', bottom: '-20px', left: '20px',
                         width: '44px', height: '44px', borderRadius: '50%',

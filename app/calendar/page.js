@@ -1,255 +1,188 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import {
-  collection, addDoc, deleteDoc, doc,
-  query, orderBy, onSnapshot, serverTimestamp
-} from 'firebase/firestore';
-
-const EVENT_TYPES = [
-  { label: '🎂 생일', value: 'birthday', color: '#ff6b6b' },
-  { label: '💕 기념일', value: 'anniversary', color: '#e84393' },
-  { label: '📅 일정', value: 'schedule', color: '#667eea' },
-  { label: '🏥 병원', value: 'hospital', color: '#00b894' },
-  { label: '✈️ 여행', value: 'travel', color: '#fdcb6e' },
-  { label: '🎉 행사', value: 'event', color: '#a29bfe' },
-];
+import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 export default function CalendarPage() {
   const [user, setUser] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(null);
   const [events, setEvents] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: '', type: 'schedule', memo: '' });
-  const [saving, setSaving] = useState(false);
-  const router = useRouter();
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: '', description: '', emoji: '🎉' });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const eventEmojis = ['🎉', '🎂', '🏥', '✈️', '📚', '🎵', '⚽', '🍽️', '💼', '❤️', '🎄', '🎃'];
+  const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+  const monthNames = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
 
   useEffect(() => {
     const saved = localStorage.getItem('user');
-    if (!saved) { router.push('/login'); return; }
+    if (!saved) { window.location.href = '/login'; return; }
     setUser(JSON.parse(saved));
-  }, [router]);
-
-  useEffect(() => {
-    const q = query(collection(db, 'events'), orderBy('date', 'asc'));
-    const unsub = onSnapshot(q, (snap) => {
-      setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
   }, []);
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-  const goToday = () => {
-    const today = new Date();
-    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  useEffect(() => {
+    if (user) fetchEvents();
+  }, [user, year, month]);
+
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const snap = await getDocs(collection(db, 'events'));
+      const startStr = year + '-' + String(month + 1).padStart(2, '0') + '-01';
+      const endStr = year + '-' + String(month + 1).padStart(2, '0') + '-31';
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(e => e.date >= startStr && e.date <= endStr);
+      setEvents(list);
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   };
 
-  const getDaysInMonth = () => {
-    const firstDay = new Date(year, month, 1).getDay();
-    const lastDate = new Date(year, month + 1, 0).getDate();
-    const days = [];
-    for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let d = 1; d <= lastDate; d++) days.push(d);
-    return days;
-  };
-
-  const dateKey = (d) => {
-    return `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  };
-
-  const getEventsForDate = (d) => {
-    if (!d) return [];
-    const key = dateKey(d);
-    return events.filter(e => e.date === key);
-  };
-
-  const isToday = (d) => {
-    if (!d) return false;
-    const today = new Date();
-    return d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
-  };
-
-  const isSelected = (d) => {
-    if (!d || !selectedDate) return false;
-    return dateKey(d) === selectedDate;
-  };
-
-  const handleDateClick = (d) => {
-    if (!d) return;
-    setSelectedDate(dateKey(d));
-  };
-
-  const openAddModal = () => {
-    if (!selectedDate) return;
-    setNewEvent({ title: '', type: 'schedule', memo: '' });
-    setShowModal(true);
-  };
-
-  const handleSaveEvent = async () => {
-    if (!newEvent.title.trim()) { alert('일정 제목을 입력해주세요'); return; }
-    setSaving(true);
+  const handleAddEvent = async () => {
+    if (!newEvent.title.trim() || !selectedDate || submitting) return;
+    setSubmitting(true);
     try {
       await addDoc(collection(db, 'events'), {
         title: newEvent.title.trim(),
-        type: newEvent.type,
-        memo: newEvent.memo.trim(),
+        description: newEvent.description.trim(),
+        emoji: newEvent.emoji,
         date: selectedDate,
-        author: user.name,
         authorId: user.id,
-        emoji: user.emoji,
+        author: user.name,
+        authorEmoji: user.emoji,
         createdAt: serverTimestamp()
       });
-      setShowModal(false);
-    } catch (error) {
-      console.error(error);
-      alert('저장 실패');
-    } finally {
-      setSaving(false);
-    }
+      setNewEvent({ title: '', description: '', emoji: '🎉' });
+      setShowAddForm(false);
+      fetchEvents();
+    } catch (e) { console.error(e); }
+    finally { setSubmitting(false); }
   };
 
   const handleDeleteEvent = async (eventId) => {
-    if (!confirm('이 일정을 삭제할까요?')) return;
-    try {
-      await deleteDoc(doc(db, 'events', eventId));
-    } catch (error) {
-      console.error(error);
-    }
+    try { await deleteDoc(doc(db, 'events', eventId)); fetchEvents(); }
+    catch (e) { console.error(e); }
   };
 
-  const getTypeInfo = (type) => EVENT_TYPES.find(t => t.value === type) || EVENT_TYPES[2];
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const goToday = () => setCurrentDate(new Date());
 
-  const selectedEvents = selectedDate ? events.filter(e => e.date === selectedDate) : [];
-  const days = getDaysInMonth();
-  const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const today = new Date();
+  const isToday = (day) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
 
-  if (!user) return null;
+  const getEventsForDay = (day) => {
+    const ds = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    return events.filter(e => e.date === ds);
+  };
+
+  const formatSelectedDate = (ds) => {
+    if (!ds) return '';
+    const p = ds.split('-');
+    return p[0] + '년 ' + parseInt(p[1]) + '월 ' + parseInt(p[2]) + '일';
+  };
+
+  const calendarDays = [];
+  for (let i = 0; i < firstDay; i++) calendarDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
+
+  const selectedDateEvents = selectedDate ? events.filter(e => e.date === selectedDate) : [];
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       {/* 헤더 */}
       <div style={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '20px', color: 'white',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        padding: '20px', color: 'white'
       }}>
-        <h1 style={{ margin: 0, fontSize: '20px' }}>📅 가족 캘린더</h1>
-        <Link href="/" style={{
-          background: 'rgba(255,255,255,0.2)', color: 'white',
-          padding: '8px 16px', borderRadius: '8px',
-          textDecoration: 'none', fontSize: '14px'
-        }}>← 홈으로</Link>
+        <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <a href="/" style={{ color: 'white', textDecoration: 'none', fontSize: '15px', fontWeight: '600' }}>← 홈</a>
+            <a href="/family" style={{ color: 'rgba(255,255,255,0.85)', textDecoration: 'none', fontSize: '13px' }}>👨‍👩‍👧‍👦 가족소개</a>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: '36px', marginBottom: '4px' }}>📅</p>
+            <h1 style={{ margin: '0 0 4px', fontSize: '22px', fontWeight: '800' }}>가족 캘린더</h1>
+            <p style={{ margin: 0, fontSize: '13px', opacity: 0.85 }}>우리 가족의 소중한 일정을 함께 관리해요</p>
+          </div>
+        </div>
       </div>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '24px 16px' }}>
         {/* 월 네비게이션 */}
         <div style={{
-          background: 'white', borderRadius: '16px',
-          padding: '20px', marginBottom: '16px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+          background: 'white', borderRadius: '20px', padding: '20px',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.06)', marginBottom: '16px'
         }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between',
-            alignItems: 'center', marginBottom: '20px'
-          }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button onClick={prevMonth} style={{
-              background: '#f0f0f0', border: 'none', borderRadius: '10px',
-              padding: '10px 16px', fontSize: '16px', cursor: 'pointer'
-            }}>◀</button>
+              width: '40px', height: '40px', borderRadius: '50%', border: 'none',
+              background: '#f0f2f5', fontSize: '18px', cursor: 'pointer'
+            }}>‹</button>
             <div style={{ textAlign: 'center' }}>
-              <h2 style={{ margin: 0, fontSize: '22px', color: '#333' }}>
-                {year}년 {month + 1}월
+              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#1a1a2e' }}>
+                {year}년 {monthNames[month]}
               </h2>
+              <button onClick={goToday} style={{
+                background: 'none', border: 'none', color: '#667eea',
+                fontSize: '12px', cursor: 'pointer', marginTop: '4px', fontWeight: '600'
+              }}>오늘로 이동</button>
             </div>
             <button onClick={nextMonth} style={{
-              background: '#f0f0f0', border: 'none', borderRadius: '10px',
-              padding: '10px 16px', fontSize: '16px', cursor: 'pointer'
-            }}>▶</button>
+              width: '40px', height: '40px', borderRadius: '50%', border: 'none',
+              background: '#f0f2f5', fontSize: '18px', cursor: 'pointer'
+            }}>›</button>
           </div>
+        </div>
 
-          <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-            <button onClick={goToday} style={{
-              background: 'linear-gradient(135deg, #667eea, #764ba2)',
-              color: 'white', border: 'none', borderRadius: '8px',
-              padding: '6px 16px', fontSize: '13px', cursor: 'pointer'
-            }}>오늘</button>
-          </div>
-
-          {/* 요일 헤더 */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
-            gap: '4px', marginBottom: '8px'
-          }}>
-            {weekdays.map((d, i) => (
-              <div key={d} style={{
-                textAlign: 'center', fontSize: '13px', fontWeight: '700',
-                padding: '8px 0',
-                color: i === 0 ? '#ff6b6b' : i === 6 ? '#667eea' : '#999'
-              }}>{d}</div>
+        {/* 캘린더 그리드 */}
+        <div style={{
+          background: 'white', borderRadius: '20px', padding: '16px',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.06)', marginBottom: '16px'
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '8px' }}>
+            {dayNames.map((name, i) => (
+              <div key={name} style={{
+                textAlign: 'center', fontSize: '12px', fontWeight: '700', padding: '8px 0',
+                color: i === 0 ? '#e74c3c' : i === 6 ? '#3498db' : '#999'
+              }}>{name}</div>
             ))}
           </div>
-
-          {/* 날짜 그리드 */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
-            gap: '4px'
-          }}>
-            {days.map((d, idx) => {
-              const dayEvents = getEventsForDate(d);
-              const today = isToday(d);
-              const selected = isSelected(d);
-              const dayOfWeek = idx % 7;
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+            {calendarDays.map((day, idx) => {
+              if (!day) return <div key={'empty-' + idx} />;
+              const dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+              const dayEvents = getEventsForDay(day);
+              const isSelected = selectedDate === dateStr;
+              const dayOfWeek = (firstDay + day - 1) % 7;
 
               return (
-                <div
-                  key={idx}
-                  onClick={() => handleDateClick(d)}
+                <div key={day}
+                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
                   style={{
-                    aspectRatio: '1',
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    borderRadius: '12px',
-                    cursor: d ? 'pointer' : 'default',
-                    background: selected ? 'linear-gradient(135deg, #667eea, #764ba2)'
-                      : today ? '#f0e6ff' : 'transparent',
-                    border: today && !selected ? '2px solid #764ba2' : '2px solid transparent',
-                    transition: 'all 0.2s',
-                    position: 'relative'
-                  }}
-                >
-                  {d && (
-                    <>
-                      <span style={{
-                        fontSize: '15px',
-                        fontWeight: today || selected ? '700' : '500',
-                        color: selected ? 'white'
-                          : dayOfWeek === 0 ? '#ff6b6b'
-                          : dayOfWeek === 6 ? '#667eea'
-                          : '#333'
-                      }}>{d}</span>
-                      {dayEvents.length > 0 && (
-                        <div style={{
-                          display: 'flex', gap: '2px', marginTop: '2px',
-                          flexWrap: 'wrap', justifyContent: 'center'
-                        }}>
-                          {dayEvents.slice(0, 3).map((ev, i) => (
-                            <div key={i} style={{
-                              width: '6px', height: '6px',
-                              borderRadius: '50%',
-                              background: selected ? 'white' : getTypeInfo(ev.type).color
-                            }} />
-                          ))}
-                        </div>
-                      )}
-                    </>
+                    padding: '8px 4px', textAlign: 'center', borderRadius: '12px',
+                    cursor: 'pointer', minHeight: '48px',
+                    background: isSelected ? 'linear-gradient(135deg, #667eea, #764ba2)' : isToday(day) ? '#f0f2ff' : 'transparent',
+                    border: isToday(day) && !isSelected ? '2px solid #667eea' : '2px solid transparent',
+                    transition: 'all 0.2s'
+                  }}>
+                  <span style={{
+                    fontSize: '14px', fontWeight: isToday(day) ? '800' : '500',
+                    color: isSelected ? 'white' : dayOfWeek === 0 ? '#e74c3c' : dayOfWeek === 6 ? '#3498db' : '#333'
+                  }}>{day}</span>
+                  {dayEvents.length > 0 && (
+                    <div style={{ marginTop: '2px', fontSize: '10px' }}>
+                      {dayEvents.slice(0, 2).map((e, i) => <span key={i}>{e.emoji}</span>)}
+                      {dayEvents.length > 2 && <span style={{ color: '#999', fontSize: '9px' }}>+{dayEvents.length - 2}</span>}
+                    </div>
                   )}
                 </div>
               );
@@ -260,236 +193,125 @@ export default function CalendarPage() {
         {/* 선택된 날짜 일정 */}
         {selectedDate && (
           <div style={{
-            background: 'white', borderRadius: '16px',
-            padding: '20px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+            background: 'white', borderRadius: '20px', padding: '24px',
+            boxShadow: '0 2px 16px rgba(0,0,0,0.06)', marginBottom: '16px'
           }}>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              alignItems: 'center', marginBottom: '16px'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '16px', color: '#333' }}>
-                📌 {selectedDate.replace(/-/g, '.')} 일정
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
+                📌 {formatSelectedDate(selectedDate)}
               </h3>
-              <button onClick={openAddModal} style={{
+              <button onClick={() => setShowAddForm(!showAddForm)} style={{
+                padding: '8px 16px', borderRadius: '12px', border: 'none',
                 background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                color: 'white', border: 'none', borderRadius: '10px',
-                padding: '8px 16px', fontSize: '13px', fontWeight: '600',
-                cursor: 'pointer'
-              }}>+ 일정 추가</button>
+                color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer'
+              }}>{showAddForm ? '취소' : '+ 일정 추가'}</button>
             </div>
 
-            {selectedEvents.length === 0 ? (
-              <div style={{
-                textAlign: 'center', padding: '30px',
-                color: '#bbb', fontSize: '14px'
-              }}>
-                등록된 일정이 없습니다
+            {showAddForm && (
+              <div style={{ padding: '20px', background: '#f8f9ff', borderRadius: '16px', marginBottom: '16px' }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#555', display: 'block', marginBottom: '6px' }}>이모지 선택</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {eventEmojis.map(emoji => (
+                      <button key={emoji} onClick={() => setNewEvent({ ...newEvent, emoji })} style={{
+                        width: '40px', height: '40px', borderRadius: '10px', border: 'none',
+                        background: newEvent.emoji === emoji ? '#667eea' : '#fff',
+                        fontSize: '20px', cursor: 'pointer',
+                        boxShadow: newEvent.emoji === emoji ? '0 2px 8px rgba(102,126,234,0.4)' : '0 1px 3px rgba(0,0,0,0.1)'
+                      }}>{emoji}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#555', display: 'block', marginBottom: '6px' }}>일정 제목</label>
+                  <input value={newEvent.title} onChange={e => setNewEvent({ ...newEvent, title: e.target.value })}
+                    placeholder="예: 할머니 생신 🎂"
+                    style={{
+                      width: '100%', padding: '12px', border: '2px solid #e8e8e8', borderRadius: '12px',
+                      fontSize: '14px', outline: 'none', boxSizing: 'border-box'
+                    }}
+                    onFocus={e => e.target.style.borderColor = '#667eea'}
+                    onBlur={e => e.target.style.borderColor = '#e8e8e8'}
+                  />
+                </div>
+                <div style={{ marginBottom: '16px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#555', display: 'block', marginBottom: '6px' }}>메모 (선택)</label>
+                  <input value={newEvent.description} onChange={e => setNewEvent({ ...newEvent, description: e.target.value })}
+                    placeholder="간단한 메모..."
+                    style={{
+                      width: '100%', padding: '12px', border: '2px solid #e8e8e8', borderRadius: '12px',
+                      fontSize: '14px', outline: 'none', boxSizing: 'border-box'
+                    }}
+                    onFocus={e => e.target.style.borderColor = '#667eea'}
+                    onBlur={e => e.target.style.borderColor = '#e8e8e8'}
+                  />
+                </div>
+                <button onClick={handleAddEvent} disabled={submitting || !newEvent.title.trim()} style={{
+                  width: '100%', padding: '12px', borderRadius: '12px', border: 'none',
+                  background: newEvent.title.trim() ? 'linear-gradient(135deg, #667eea, #764ba2)' : '#e8e8e8',
+                  color: newEvent.title.trim() ? 'white' : '#bbb',
+                  fontSize: '14px', fontWeight: '600', cursor: newEvent.title.trim() ? 'pointer' : 'default'
+                }}>{submitting ? '등록 중...' : '일정 등록'}</button>
               </div>
+            )}
+
+            {selectedDateEvents.length === 0 && !showAddForm ? (
+              <p style={{ textAlign: 'center', color: '#ccc', fontSize: '14px', padding: '20px 0' }}>
+                이 날의 일정이 없습니다
+              </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {selectedEvents.map((ev) => {
-                  const typeInfo = getTypeInfo(ev.type);
-                  return (
-                    <div key={ev.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '12px',
-                      background: '#f8f9fa', borderRadius: '12px',
-                      padding: '14px 16px',
-                      borderLeft: '4px solid ' + typeInfo.color
-                    }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '15px', fontWeight: '600', color: '#333',
-                          marginBottom: '4px'
-                        }}>
-                          {typeInfo.label.split(' ')[0]} {ev.title}
-                        </div>
-                        {ev.memo && (
-                          <div style={{ fontSize: '13px', color: '#888', marginBottom: '4px' }}>
-                            {ev.memo}
-                          </div>
-                        )}
-                        <div style={{ fontSize: '11px', color: '#bbb' }}>
-                          {ev.emoji} {ev.author}
-                        </div>
-                      </div>
-                      {user && user.id === ev.authorId && (
-                        <button
-                          onClick={() => handleDeleteEvent(ev.id)}
-                          style={{
-                            background: 'none', border: 'none',
-                            fontSize: '16px', cursor: 'pointer', color: '#ccc'
-                          }}
-                        >🗑️</button>
-                      )}
+                {selectedDateEvents.map(event => (
+                  <div key={event.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '14px', background: '#fafafa', borderRadius: '14px'
+                  }}>
+                    <span style={{ fontSize: '28px' }}>{event.emoji}</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: '15px', fontWeight: '600', color: '#333' }}>{event.title}</p>
+                      {event.description && <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#999' }}>{event.description}</p>}
+                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#ccc' }}>{event.authorEmoji} {event.author}</p>
                     </div>
-                  );
-                })}
+                    {user && user.id === event.authorId && (
+                      <button onClick={() => handleDeleteEvent(event.id)} style={{
+                        background: 'none', border: 'none', color: '#ddd', cursor: 'pointer', fontSize: '18px'
+                      }}>×</button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* 다가오는 일정 */}
+        {/* 이번 달 전체 일정 */}
         <div style={{
-          background: 'white', borderRadius: '16px',
-          padding: '20px', marginTop: '16px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+          background: 'white', borderRadius: '20px', padding: '24px',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.06)'
         }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '16px', color: '#333' }}>
-            🔔 다가오는 일정
+          <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '700' }}>
+            🗓️ 이번 달 일정 ({events.length})
           </h3>
-          {(() => {
-            const today = new Date();
-            const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-            const upcoming = events
-              .filter(e => e.date >= todayKey)
-              .sort((a, b) => a.date.localeCompare(b.date))
-              .slice(0, 5);
-
-            if (upcoming.length === 0) {
-              return (
-                <div style={{
-                  textAlign: 'center', padding: '20px',
-                  color: '#bbb', fontSize: '14px'
+          {events.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#ccc', fontSize: '14px', padding: '12px 0' }}>
+              이번 달 등록된 일정이 없습니다
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {events.sort((a, b) => a.date.localeCompare(b.date)).map(event => (
+                <div key={event.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '10px 14px', background: '#fafafa', borderRadius: '10px'
                 }}>
-                  예정된 일정이 없습니다
+                  <span style={{ fontSize: '20px' }}>{event.emoji}</span>
+                  <span style={{ flex: 1, fontSize: '14px', fontWeight: '600', color: '#333' }}>{event.title}</span>
+                  <span style={{ fontSize: '12px', color: '#999' }}>{parseInt(event.date.split('-')[2])}일</span>
                 </div>
-              );
-            }
-
-            return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {upcoming.map((ev) => {
-                  const typeInfo = getTypeInfo(ev.type);
-                  return (
-                    <div key={ev.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '12px',
-                      padding: '10px 14px', background: '#f8f9fa',
-                      borderRadius: '10px'
-                    }}>
-                      <span style={{
-                        fontSize: '12px', color: 'white', fontWeight: '600',
-                        background: typeInfo.color, padding: '4px 10px',
-                        borderRadius: '6px', whiteSpace: 'nowrap'
-                      }}>
-                        {ev.date.slice(5).replace('-', '/')}
-                      </span>
-                      <span style={{ fontSize: '14px', color: '#444' }}>
-                        {typeInfo.label.split(' ')[0]} {ev.title}
-                      </span>
-                      <span style={{ fontSize: '12px', color: '#bbb', marginLeft: 'auto' }}>
-                        {ev.emoji}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* 일정 추가 모달 */}
-      {showModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)', display: 'flex',
-          justifyContent: 'center', alignItems: 'center',
-          zIndex: 1000, padding: '20px'
-        }}>
-          <div style={{
-            background: 'white', borderRadius: '20px',
-            padding: '28px', width: '100%', maxWidth: '400px'
-          }}>
-            <h3 style={{ margin: '0 0 6px', fontSize: '18px' }}>
-              ➕ 일정 추가
-            </h3>
-            <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#999' }}>
-              {selectedDate.replace(/-/g, '.')}
-            </p>
-
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '13px', fontWeight: '600', color: '#555', display: 'block', marginBottom: '6px' }}>
-                분류
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {EVENT_TYPES.map((t) => (
-                  <button
-                    key={t.value}
-                    onClick={() => setNewEvent({ ...newEvent, type: t.value })}
-                    style={{
-                      padding: '6px 12px', borderRadius: '8px',
-                      border: newEvent.type === t.value ? '2px solid ' + t.color : '2px solid #e0e0e0',
-                      background: newEvent.type === t.value ? t.color + '20' : 'white',
-                      fontSize: '13px', cursor: 'pointer',
-                      color: '#444'
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '13px', fontWeight: '600', color: '#555', display: 'block', marginBottom: '6px' }}>
-                제목
-              </label>
-              <input
-                type="text"
-                placeholder="예: 엄마 생일, 가족 여행"
-                value={newEvent.title}
-                onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                style={{
-                  width: '100%', padding: '12px', borderRadius: '10px',
-                  border: '2px solid #e0e0e0', fontSize: '14px',
-                  outline: 'none', boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ fontSize: '13px', fontWeight: '600', color: '#555', display: 'block', marginBottom: '6px' }}>
-                메모 (선택)
-              </label>
-              <input
-                type="text"
-                placeholder="추가 메모"
-                value={newEvent.memo}
-                onChange={(e) => setNewEvent({ ...newEvent, memo: e.target.value })}
-                style={{
-                  width: '100%', padding: '12px', borderRadius: '10px',
-                  border: '2px solid #e0e0e0', fontSize: '14px',
-                  outline: 'none', boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={() => setShowModal(false)}
-                style={{
-                  flex: 1, padding: '12px', borderRadius: '10px',
-                  border: '2px solid #e0e0e0', background: 'white',
-                  fontSize: '14px', cursor: 'pointer', color: '#666'
-                }}
-              >취소</button>
-              <button
-                onClick={handleSaveEvent}
-                disabled={saving}
-                style={{
-                  flex: 1, padding: '12px', borderRadius: '10px',
-                  border: 'none',
-                  background: saving ? '#ccc' : 'linear-gradient(135deg, #667eea, #764ba2)',
-                  color: 'white', fontSize: '14px', fontWeight: '600',
-                  cursor: saving ? 'not-allowed' : 'pointer'
-                }}
-              >{saving ? '저장 중...' : '저장'}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
