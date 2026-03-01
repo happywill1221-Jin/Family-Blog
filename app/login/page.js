@@ -52,10 +52,12 @@ export default function LoginPage() {
         console.log("정답 비밀번호:", correctPassword);
         console.log("일치 여부:", password === correctPassword);
 
-        if (password === correctPassword) {
-          localStorage.setItem("user", selected);
-          router.push("/");
-        } else {
+      else 
+          if (password === correctPassword) {
+  const member = familyMembers.find(m => m.id === selected);
+  localStorage.setItem("user", JSON.stringify(member));
+  router.push("/");
+}
           setError("비밀번호가 올바르지 않습니다");
         }
       }
