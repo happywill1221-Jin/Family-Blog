@@ -8,6 +8,7 @@ import {
   collection, addDoc, query, orderBy, onSnapshot,
   serverTimestamp, doc, updateDoc, arrayUnion, arrayRemove
 } from 'firebase/firestore';
+import { CATEGORIES, getCategoryById } from '@/lib/categories';
 
 /* ── 썸네일용 그라데이션 팔레트 ── */
 const PALETTES = [
@@ -40,8 +41,10 @@ export default function HomePage() {
   const [posts, setPosts] = useState([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [category, setCategory] = useState('daily');
   const [writing, setWriting] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [filterCat, setFilterCat] = useState('all');
   const router = useRouter();
 
   useEffect(() => {
@@ -61,6 +64,10 @@ export default function HomePage() {
     return () => unsubscribe();
   }, []);
 
+  const filteredPosts = filterCat === 'all'
+    ? posts
+    : posts.filter(p => p.category === filterCat);
+
   const handleSubmit = async () => {
     if (!title.trim() || !content.trim()) return;
     setWriting(true);
@@ -68,13 +75,14 @@ export default function HomePage() {
       await addDoc(collection(db, 'posts'), {
         title: title.trim(),
         content: content.trim(),
+        category,
         author: user.name,
         emoji: user.emoji,
         authorId: user.id,
         likes: [],
         createdAt: serverTimestamp()
       });
-      setTitle(''); setContent(''); setShowForm(false);
+      setTitle(''); setContent(''); setCategory('daily'); setShowForm(false);
     } catch (e) { console.error(e); alert('글 작성에 실패했습니다'); }
     finally { setWriting(false); }
   };
@@ -112,6 +120,13 @@ export default function HomePage() {
     return `${min}분`;
   };
 
+  /* ── 카테고리별 글 수 ── */
+  const catCounts = {};
+  posts.forEach(p => {
+    const cid = p.category || 'etc';
+    catCounts[cid] = (catCounts[cid] || 0) + 1;
+  });
+
   if (!user) return null;
 
   return (
@@ -144,6 +159,52 @@ export default function HomePage() {
 
       <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px 16px' }}>
 
+        {/* ── 카테고리 필터 바 ── */}
+        <div style={{
+          display: 'flex', gap: '8px', marginBottom: '20px',
+          overflowX: 'auto', paddingBottom: '4px',
+          WebkitOverflowScrolling: 'touch',
+          msOverflowStyle: 'none', scrollbarWidth: 'none'
+        }}>
+          <button onClick={() => setFilterCat('all')} style={{
+            padding: '8px 16px', borderRadius: '24px', border: 'none',
+            background: filterCat === 'all' ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'white',
+            color: filterCat === 'all' ? 'white' : '#555',
+            fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0,
+            boxShadow: filterCat === 'all' ? '0 4px 12px rgba(102,126,234,0.35)' : '0 1px 4px rgba(0,0,0,0.06)',
+            transition: 'all 0.2s'
+          }}>
+            🏷️ 전체 <span style={{
+              marginLeft: '4px', fontSize: '11px',
+              opacity: 0.8
+            }}>({posts.length})</span>
+          </button>
+          {CATEGORIES.map(cat => {
+            const count = catCounts[cat.id] || 0;
+            const isActive = filterCat === cat.id;
+            return (
+              <button key={cat.id} onClick={() => setFilterCat(cat.id)} style={{
+                padding: '8px 16px', borderRadius: '24px', border: 'none',
+                background: isActive ? cat.color : 'white',
+                color: isActive ? 'white' : '#555',
+                fontSize: '13px', fontWeight: '600', cursor: 'pointer',
+                whiteSpace: 'nowrap', flexShrink: 0,
+                boxShadow: isActive ? `0 4px 12px ${cat.color}55` : '0 1px 4px rgba(0,0,0,0.06)',
+                transition: 'all 0.2s',
+                opacity: count === 0 && !isActive ? 0.5 : 1
+              }}>
+                {cat.emoji} {cat.label}
+                {count > 0 && (
+                  <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.8 }}>
+                    ({count})
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* ── 글쓰기 버튼 ── */}
         {!showForm && (
           <button onClick={() => setShowForm(true)} style={{
@@ -168,6 +229,34 @@ export default function HomePage() {
             <h3 style={{ margin: '0 0 18px', fontSize: '16px', fontWeight: '700' }}>
               ✏️ 새 글 작성
             </h3>
+
+            {/* 카테고리 선택 */}
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+                🏷️ 카테고리
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {CATEGORIES.map(cat => {
+                  const isSelected = category === cat.id;
+                  return (
+                    <button key={cat.id} type="button"
+                      onClick={() => setCategory(cat.id)}
+                      style={{
+                        padding: '7px 14px', borderRadius: '20px',
+                        border: isSelected ? `2px solid ${cat.color}` : '2px solid #e8e8e8',
+                        background: isSelected ? cat.bg : 'white',
+                        color: isSelected ? cat.color : '#888',
+                        fontSize: '13px', fontWeight: isSelected ? '700' : '500',
+                        cursor: 'pointer', transition: 'all 0.2s'
+                      }}
+                    >
+                      {cat.emoji} {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <input type="text" placeholder="제목을 입력하세요" value={title}
               onChange={e => setTitle(e.target.value)}
               style={{
@@ -207,10 +296,17 @@ export default function HomePage() {
         )}
 
         {/* ── 글 카드 목록 ── */}
-        {posts.length === 0 ? (
+        {filteredPosts.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '80px 20px', color: '#aaa' }}>
-            <p style={{ fontSize: '56px', marginBottom: '12px' }}>📝</p>
-            <p style={{ fontSize: '15px' }}>아직 글이 없습니다. 첫 글을 작성해 보세요!</p>
+            <p style={{ fontSize: '56px', marginBottom: '12px' }}>
+              {filterCat === 'all' ? '📝' : getCategoryById(filterCat).emoji}
+            </p>
+            <p style={{ fontSize: '15px' }}>
+              {filterCat === 'all'
+                ? '아직 글이 없습니다. 첫 글을 작성해 보세요!'
+                : `'${getCategoryById(filterCat).label}' 카테고리에 글이 없습니다.`
+              }
+            </p>
           </div>
         ) : (
           <div style={{
@@ -218,11 +314,12 @@ export default function HomePage() {
             gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))',
             gap: '20px'
           }}>
-            {posts.map((post) => {
+            {filteredPosts.map((post) => {
               const likesArr = post.likes || [];
               const isLiked = user && likesArr.includes(user.id);
               const likeCount = likesArr.length;
               const thumb = getThumbnail(post.id);
+              const cat = getCategoryById(post.category);
 
               return (
                 <Link key={post.id} href={`/post/${post.id}`} style={{ textDecoration: 'none' }}>
@@ -241,7 +338,6 @@ export default function HomePage() {
                       height: '130px', position: 'relative', overflow: 'hidden',
                       display: 'flex', alignItems: 'center', justifyContent: 'center'
                     }}>
-                      {/* 장식 원 */}
                       <div style={{
                         position: 'absolute', width: '180px', height: '180px',
                         borderRadius: '50%', background: 'rgba(255,255,255,0.08)',
@@ -258,7 +354,6 @@ export default function HomePage() {
                         top: '20px', left: '60%'
                       }} />
 
-                      {/* 아이콘 */}
                       <span style={{
                         fontSize: '48px', zIndex: 1,
                         filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.15))'
@@ -272,6 +367,19 @@ export default function HomePage() {
                         fontSize: '11px', fontWeight: '600', letterSpacing: '0.5px'
                       }}>
                         🕐 {getReadTime(post.content)} 읽기
+                      </div>
+
+                      {/* 카테고리 태그 (썸네일 우상단) */}
+                      <div style={{
+                        position: 'absolute', bottom: '12px', right: '12px',
+                        background: 'rgba(255,255,255,0.92)',
+                        backdropFilter: 'blur(4px)',
+                        color: cat.color, padding: '4px 12px', borderRadius: '20px',
+                        fontSize: '11px', fontWeight: '700',
+                        display: 'flex', alignItems: 'center', gap: '3px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      }}>
+                        {cat.emoji} {cat.label}
                       </div>
 
                       {/* 좋아요 배지 */}
@@ -303,7 +411,6 @@ export default function HomePage() {
 
                     {/* ── 본문 영역 ── */}
                     <div style={{ padding: '28px 20px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      {/* 작성자 & 날짜 */}
                       <div style={{
                         display: 'flex', alignItems: 'center', gap: '8px',
                         marginBottom: '10px', paddingLeft: '36px'
@@ -322,7 +429,6 @@ export default function HomePage() {
                         </span>
                       </div>
 
-                      {/* 제목 */}
                       <h3 style={{
                         margin: '0 0 8px', fontSize: '17px', fontWeight: '800',
                         color: '#1a1a2e', lineHeight: '1.4',
@@ -333,7 +439,6 @@ export default function HomePage() {
                         {post.title}
                       </h3>
 
-                      {/* 미리보기 */}
                       <p style={{
                         margin: '0', fontSize: '13.5px', color: '#888',
                         lineHeight: '1.65', flex: 1,
@@ -344,13 +449,11 @@ export default function HomePage() {
                         {post.content}
                       </p>
 
-                      {/* 하단 액션 바 */}
                       <div style={{
                         display: 'flex', justifyContent: 'space-between',
                         alignItems: 'center', marginTop: '16px',
                         paddingTop: '14px', borderTop: '1px solid #f0f0f0'
                       }}>
-                        {/* 좋아요한 사람 아바타 */}
                         <div style={{ display: 'flex', alignItems: 'center' }}>
                           {likesArr.length > 0 ? (
                             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -382,7 +485,6 @@ export default function HomePage() {
                           )}
                         </div>
 
-                        {/* 하트 버튼 */}
                         <button
                           onClick={e => handleToggleLike(e, post.id, post.likes)}
                           style={{

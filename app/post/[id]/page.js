@@ -4,485 +4,143 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
-import {
-  doc, getDoc, updateDoc, deleteDoc as deleteDocument,
-  collection, addDoc, query, orderBy, onSnapshot,
-  serverTimestamp, deleteDoc, arrayUnion, arrayRemove
-} from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { CATEGORIES, getCategoryById } from '@/lib/categories';
 
-export default function PostDetailPage() {
-  const [post, setPost] = useState(null);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [comments, setComments] = useState([]);
-  const [newComment, setNewComment] = useState('');
-  const [sending, setSending] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editContent, setEditContent] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [likeAnimating, setLikeAnimating] = useState(false);
-
+export default function EditPost() {
+  const { id } = useParams();
   const router = useRouter();
-  const params = useParams();
+  const [user, setUser] = useState(null);
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [category, setCategory] = useState('daily');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('user');
-    if (!saved) {
-      router.push('/login');
-      return;
-    }
-    setUser(JSON.parse(saved));
-    fetchPost();
-  }, [params.id]);
+    if (!saved) { router.push('/login'); return; }
+    const u = JSON.parse(saved);
+    setUser(u);
 
-  useEffect(() => {
-    if (!params.id) return;
-    const q = query(
-      collection(db, 'posts', params.id, 'comments'),
-      orderBy('createdAt', 'asc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setComments(list);
-    }, (error) => {
-      console.error('댓글 로드 에러:', error);
-      const q2 = query(collection(db, 'posts', params.id, 'comments'));
-      onSnapshot(q2, (snapshot) => {
-        const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        setComments(list);
-      });
-    });
-    return () => unsubscribe();
-  }, [params.id]);
+    const load = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'posts', id));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.authorId !== u.id) { router.push('/'); return; }
+          setTitle(data.title || '');
+          setContent(data.content || '');
+          setCategory(data.category || 'etc');
+        } else { router.push('/'); }
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
+    };
+    load();
+  }, [id]);
 
-  const fetchPost = async () => {
-    try {
-      const docRef = doc(db, 'posts', params.id);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setPost({ id: docSnap.id, ...docSnap.data() });
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleToggleLike = async () => {
-    if (!user || !post) return;
-    const postRef = doc(db, 'posts', params.id);
-    const likesArray = post.likes || [];
-    const isLiked = likesArray.includes(user.id);
-
-    // 애니메이션
-    setLikeAnimating(true);
-    setTimeout(() => setLikeAnimating(false), 400);
-
-    // 즉시 UI 반영 (optimistic update)
-    if (isLiked) {
-      setPost({ ...post, likes: likesArray.filter(id => id !== user.id) });
-    } else {
-      setPost({ ...post, likes: [...likesArray, user.id] });
-    }
-
-    try {
-      if (isLiked) {
-        await updateDoc(postRef, { likes: arrayRemove(user.id) });
-      } else {
-        await updateDoc(postRef, { likes: arrayUnion(user.id) });
-      }
-    } catch (error) {
-      console.error('좋아요 에러:', error);
-      // 실패 시 롤백
-      setPost({ ...post, likes: likesArray });
-    }
-  };
-
-  const handleEditStart = () => {
-    setEditTitle(post.title);
-    setEditContent(post.content);
-    setIsEditing(true);
-  };
-
-  const handleEditSave = async () => {
-    if (!editTitle.trim() || !editContent.trim()) {
-      alert('제목과 내용을 입력해주세요');
-      return;
-    }
+  const handleSave = async () => {
+    if (!title.trim() || !content.trim()) return;
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'posts', params.id), {
-        title: editTitle.trim(),
-        content: editContent.trim()
+      await updateDoc(doc(db, 'posts', id), {
+        title: title.trim(),
+        content: content.trim(),
+        category
       });
-      setPost({ ...post, title: editTitle.trim(), content: editContent.trim() });
-      setIsEditing(false);
-      alert('수정되었습니다!');
-    } catch (error) {
-      console.error(error);
-      alert('수정에 실패했습니다');
-    } finally {
-      setSaving(false);
-    }
+      router.push(`/post/${id}`);
+    } catch (e) { console.error(e); alert('수정에 실패했습니다'); }
+    finally { setSaving(false); }
   };
 
-  const handleDeletePost = async () => {
-    if (!confirm('정말 이 글을 삭제하시겠습니까?')) return;
-    try {
-      await deleteDocument(doc(db, 'posts', params.id));
-      alert('삭제되었습니다');
-      router.push('/');
-    } catch (error) {
-      console.error(error);
-      alert('삭제에 실패했습니다');
-    }
-  };
-
-  const handleAddComment = async () => {
-    if (!newComment.trim() || !user) return;
-    setSending(true);
-    try {
-      await addDoc(collection(db, 'posts', params.id, 'comments'), {
-        text: newComment.trim(),
-        author: user.name,
-        emoji: user.emoji,
-        authorId: user.id,
-        createdAt: serverTimestamp()
-      });
-      setNewComment('');
-    } catch (error) {
-      console.error(error);
-      alert('댓글 등록에 실패했습니다');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleDeleteComment = async (commentId) => {
-    if (!confirm('댓글을 삭제하시겠습니까?')) return;
-    try {
-      await deleteDoc(doc(db, 'posts', params.id, 'comments', commentId));
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const formatDate = (timestamp) => {
-    if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric', month: 'long', day: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
-  };
-
-  if (loading) {
-    return (
-      <div style={{
-        minHeight: '100vh', display: 'flex',
-        justifyContent: 'center', alignItems: 'center'
-      }}>
-        <p>불러오는 중...</p>
-      </div>
-    );
-  }
-
-  if (!post) {
-    return (
-      <div style={{
-        minHeight: '100vh', display: 'flex',
-        justifyContent: 'center', alignItems: 'center',
-        flexDirection: 'column'
-      }}>
-        <p style={{ fontSize: '48px' }}>😢</p>
-        <p>글을 찾을 수 없습니다</p>
-        <Link href="/" style={{ color: '#667eea' }}>← 홈으로</Link>
-      </div>
-    );
-  }
-
-  const isAuthor = user && post.authorId === user.id;
-  const likesArray = post.likes || [];
-  const isLiked = user && likesArray.includes(user.id);
-  const likeCount = likesArray.length;
-
-  // 누가 눌렀는지 이름 표시용
-  const familyMembers = {
-    dad: { name: '아빠', emoji: '👨' },
-    mom: { name: '엄마', emoji: '👩' },
-    son: { name: '아들', emoji: '👦' },
-    daughter: { name: '딸', emoji: '👧' }
-  };
+  if (loading) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' }}>
+      <p style={{ color: '#999' }}>로딩 중...</p>
+    </div>
+  );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
+    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       <div style={{
         background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: '20px', color: 'white',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        padding: '16px 20px', color: 'white'
       }}>
-        <h1 style={{ margin: 0, fontSize: '20px' }}>🏠 우리 가족 블로그</h1>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <Link href="/family" style={{
-            background: 'rgba(255,255,255,0.2)', color: 'white',
-            padding: '8px 16px', borderRadius: '8px',
-            textDecoration: 'none', fontSize: '14px'
-          }}>👨‍👩‍👧‍👦 가족</Link>
-          <Link href="/" style={{
-            background: 'rgba(255,255,255,0.2)', color: 'white',
-            padding: '8px 16px', borderRadius: '8px',
-            textDecoration: 'none', fontSize: '14px'
-          }}>← 목록</Link>
+        <div style={{ maxWidth: '700px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Link href={`/post/${id}`} style={{ color: 'white', textDecoration: 'none', fontSize: '15px', fontWeight: '600' }}>← 돌아가기</Link>
+          <span style={{ fontSize: '14px' }}>{user?.emoji} {user?.name}</span>
         </div>
       </div>
 
-      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
-        {/* 글 내용 */}
+      <div style={{ maxWidth: '700px', margin: '0 auto', padding: '24px 16px' }}>
         <div style={{
-          background: 'white', borderRadius: '16px',
-          padding: '32px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          marginBottom: '20px'
+          background: 'white', borderRadius: '20px', padding: '32px 28px',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.06)'
         }}>
-          {isEditing ? (
-            <>
-              <input
-                type="text"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                style={{
-                  width: '100%', padding: '12px', fontSize: '20px',
-                  fontWeight: '700', border: '2px solid #667eea',
-                  borderRadius: '10px', marginBottom: '12px',
-                  outline: 'none', boxSizing: 'border-box'
-                }}
-              />
-              <textarea
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-                rows={10}
-                style={{
-                  width: '100%', padding: '12px', fontSize: '15px',
-                  border: '2px solid #667eea', borderRadius: '10px',
-                  outline: 'none', resize: 'vertical', lineHeight: '1.8',
-                  boxSizing: 'border-box'
-                }}
-              />
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                <button onClick={handleEditSave} disabled={saving} style={{
-                  padding: '10px 24px',
-                  background: 'linear-gradient(135deg, #667eea, #764ba2)',
-                  color: 'white', border: 'none', borderRadius: '10px',
-                  fontSize: '14px', fontWeight: '600', cursor: 'pointer'
-                }}>{saving ? '저장 중...' : '✅ 저장'}</button>
-                <button onClick={() => setIsEditing(false)} style={{
-                  padding: '10px 24px', background: '#eee',
-                  color: '#666', border: 'none', borderRadius: '10px',
-                  fontSize: '14px', cursor: 'pointer'
-                }}>취소</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h1 style={{ margin: '0 0 12px', fontSize: '24px', color: '#333' }}>
-                {post.title}
-              </h1>
-              <div style={{
-                fontSize: '14px', color: '#999', marginBottom: '24px',
-                paddingBottom: '16px', borderBottom: '1px solid #eee',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-              }}>
-                <Link href={`/profile/${post.authorId}`} style={{
-                  textDecoration: 'none', color: '#667eea', fontWeight: '600'
-                }}>
-                  {post.emoji} {post.author}
-                </Link>
-                <span style={{ color: '#ccc' }}>{formatDate(post.createdAt)}</span>
-              </div>
+          <h2 style={{ margin: '0 0 24px', fontSize: '20px', fontWeight: '800', color: '#1a1a2e' }}>
+            ✏️ 글 수정
+          </h2>
 
-              {/* 수정/삭제 버튼 */}
-              {isAuthor && (
-                <div style={{
-                  display: 'flex', gap: '8px', marginBottom: '20px'
-                }}>
-                  <button onClick={handleEditStart} style={{
-                    background: '#f0f0f0', border: 'none',
-                    padding: '6px 14px', borderRadius: '8px',
-                    fontSize: '13px', cursor: 'pointer', color: '#555'
-                  }}>✏️ 수정</button>
-                  <button onClick={handleDeletePost} style={{
-                    background: '#fee', border: 'none',
-                    padding: '6px 14px', borderRadius: '8px',
-                    fontSize: '13px', cursor: 'pointer', color: '#e74c3c'
-                  }}>🗑️ 삭제</button>
-                </div>
-              )}
-
-              <div style={{
-                fontSize: '16px', lineHeight: '1.8',
-                color: '#444', whiteSpace: 'pre-wrap'
-              }}>
-                {post.content}
-              </div>
-
-              {/* ★★★ 하트 영역 ★★★ */}
-              <div style={{
-                marginTop: '32px', paddingTop: '20px',
-                borderTop: '1px solid #eee',
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', gap: '12px'
-              }}>
-                <button
-                  onClick={handleToggleLike}
-                  style={{
-                    background: isLiked
-                      ? 'linear-gradient(135deg, #ff6b6b, #ee5a24)'
-                      : '#f8f9fa',
-                    border: isLiked ? 'none' : '2px solid #eee',
-                    borderRadius: '50px',
-                    padding: '14px 32px',
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    transition: 'all 0.3s',
-                    transform: likeAnimating ? 'scale(1.2)' : 'scale(1)',
-                    boxShadow: isLiked ? '0 4px 15px rgba(255,107,107,0.4)' : 'none'
-                  }}
-                >
-                  <span style={{
-                    fontSize: '24px',
-                    transition: 'transform 0.3s',
-                    display: 'inline-block',
-                    transform: likeAnimating ? 'scale(1.3)' : 'scale(1)'
-                  }}>
-                    {isLiked ? '❤️' : '🤍'}
-                  </span>
-                  <span style={{
-                    fontSize: '16px', fontWeight: '700',
-                    color: isLiked ? 'white' : '#999'
-                  }}>
-                    {isLiked ? '좋아요 취소' : '좋아요'}
-                  </span>
-                </button>
-
-                {likeCount > 0 && (
-                  <div style={{
-                    fontSize: '13px', color: '#999',
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    flexWrap: 'wrap', justifyContent: 'center'
-                  }}>
-                    {likesArray.map((id) => {
-                      const m = familyMembers[id];
-                      return m ? (
-                        <span key={id} style={{
-                          background: '#fff0f0', padding: '4px 10px',
-                          borderRadius: '20px', fontSize: '12px',
-                          color: '#e74c3c', fontWeight: '600'
-                        }}>
-                          {m.emoji} {m.name}
-                        </span>
-                      ) : null;
-                    })}
-                    <span style={{ color: '#e74c3c', fontWeight: '600' }}>
-                      {likeCount}명이 좋아합니다
-                    </span>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* 댓글 */}
-        <div style={{
-          background: 'white', borderRadius: '16px',
-          padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
-        }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: '700', color: '#333' }}>
-            💬 댓글 ({comments.length}개)
-          </h3>
-
-          {comments.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '24px', color: '#aaa', fontSize: '14px' }}>
-              아직 댓글이 없습니다. 첫 댓글을 남겨보세요!
+          {/* 카테고리 선택 */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+              🏷️ 카테고리
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {CATEGORIES.map(cat => {
+                const isSelected = category === cat.id;
+                return (
+                  <button key={cat.id} type="button"
+                    onClick={() => setCategory(cat.id)}
+                    style={{
+                      padding: '7px 14px', borderRadius: '20px',
+                      border: isSelected ? `2px solid ${cat.color}` : '2px solid #e8e8e8',
+                      background: isSelected ? cat.bg : 'white',
+                      color: isSelected ? cat.color : '#888',
+                      fontSize: '13px', fontWeight: isSelected ? '700' : '500',
+                      cursor: 'pointer', transition: 'all 0.2s'
+                    }}
+                  >
+                    {cat.emoji} {cat.label}
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-              {comments.map((c) => (
-                <div key={c.id} style={{
-                  background: '#f8f9fa', borderRadius: '12px', padding: '14px 16px'
-                }}>
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'center', marginBottom: '6px'
-                  }}>
-                    <Link href={`/profile/${c.authorId}`} style={{
-                      fontSize: '13px', fontWeight: '600', color: '#667eea',
-                      textDecoration: 'none'
-                    }}>
-                      {c.emoji} {c.author}
-                    </Link>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', color: '#bbb' }}>
-                        {formatDate(c.createdAt)}
-                      </span>
-                      {user && user.id === c.authorId && (
-                        <button onClick={() => handleDeleteComment(c.id)} style={{
-                          background: 'none', border: 'none',
-                          color: '#ccc', cursor: 'pointer', fontSize: '12px', padding: '0'
-                        }}>🗑️</button>
-                      )}
-                    </div>
-                  </div>
-                  <p style={{
-                    margin: 0, fontSize: '14px', color: '#444',
-                    lineHeight: '1.6', whiteSpace: 'pre-wrap'
-                  }}>{c.text}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          </div>
 
-          <div style={{
-            display: 'flex', gap: '10px', alignItems: 'flex-end',
-            borderTop: '1px solid #eee', paddingTop: '16px'
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '12px', color: '#999', marginBottom: '6px' }}>
-                {user?.emoji} {user?.name}
-              </div>
-              <textarea
-                placeholder="댓글을 입력하세요..."
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAddComment();
-                  }
-                }}
-                rows={2}
-                style={{
-                  width: '100%', padding: '12px', borderRadius: '10px',
-                  border: '2px solid #e0e0e0', fontSize: '14px',
-                  resize: 'none', outline: 'none', boxSizing: 'border-box',
-                  lineHeight: '1.5'
-                }}
-              />
-            </div>
-            <button
-              onClick={handleAddComment}
-              disabled={sending || !newComment.trim()}
-              style={{
-                padding: '12px 20px',
-                background: (!newComment.trim() || sending)
-                  ? '#ccc' : 'linear-gradient(135deg, #667eea, #764ba2)',
-                color: 'white', border: 'none', borderRadius: '10px',
-                fontSize: '14px', fontWeight: '600',
-                cursor: sending ? 'not-allowed' : 'pointer',
-                whiteSpace: 'nowrap'
-              }}
-            >{sending ? '...' : '등록'}</button>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+            placeholder="제목"
+            style={{
+              width: '100%', padding: '14px 16px', marginBottom: '14px',
+              border: '2px solid #e0e0e0', borderRadius: '12px',
+              fontSize: '15px', outline: 'none', boxSizing: 'border-box',
+              transition: 'border 0.2s'
+            }}
+            onFocus={e => e.target.style.borderColor = '#667eea'}
+            onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+          />
+          <textarea value={content} onChange={e => setContent(e.target.value)}
+            placeholder="내용" rows={10}
+            style={{
+              width: '100%', padding: '14px 16px',
+              border: '2px solid #e0e0e0', borderRadius: '12px',
+              fontSize: '15px', resize: 'vertical', outline: 'none',
+              boxSizing: 'border-box', lineHeight: '1.7', transition: 'border 0.2s'
+            }}
+            onFocus={e => e.target.style.borderColor = '#667eea'}
+            onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+          />
+          <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+            <button onClick={handleSave} disabled={saving} style={{
+              padding: '12px 32px', borderRadius: '12px', border: 'none',
+              background: 'linear-gradient(135deg, #667eea, #764ba2)',
+              color: 'white', fontSize: '15px', fontWeight: '700', cursor: 'pointer'
+            }}>{saving ? '저장 중...' : '💾 저장하기'}</button>
+            <Link href={`/post/${id}`} style={{
+              padding: '12px 24px', borderRadius: '12px',
+              background: '#f0f0f0', color: '#666',
+              textDecoration: 'none', fontSize: '15px',
+              display: 'flex', alignItems: 'center'
+            }}>취소</Link>
           </div>
         </div>
       </div>
