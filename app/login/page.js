@@ -1,256 +1,169 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { db } from '@/lib/firebase';
+import { collection, query, orderBy, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
-const familyMembers = [
-  { id: "dad", name: "아빠", emoji: "👨" },
-  { id: "mom", name: "엄마", emoji: "👩" },
-  { id: "son", name: "아들", emoji: "👦" },
-  { id: "daughter", name: "딸", emoji: "👧" },
-];
-
-const photos = ["/family1.jpg", "/family2.jpg", "/family3.jpg", "/family4.jpg"];
-
-export default function LoginPage() {
-  const [selected, setSelected] = useState(null);
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [currentPhoto, setCurrentPhoto] = useState(0);
+export default function DashboardPage() {
+  const [user, setUser] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentPhoto((prev) => (prev + 1) % photos.length);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const handleLogin = async () => {
-    if (!selected) {
-      setError("가족 구성원을 선택해주세요");
+    const saved = localStorage.getItem('user');
+    if (!saved) {
+      router.push('/login');
       return;
     }
-    if (!password) {
-      setError("비밀번호를 입력해주세요");
-      return;
-    }
+    setUser(JSON.parse(saved));
+    fetchPosts();
+  }, [router]);
 
+  const fetchPosts = async () => {
     try {
-      const docRef = doc(db, "config", "app");
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const correctPassword = docSnap.data().password;
-
-        if (password === correctPassword) {
-          const member = familyMembers.find((m) => m.id === selected);
-          localStorage.setItem("user", JSON.stringify(member));
-          router.push("/");
-        } else {
-          setError("비밀번호가 올바르지 않습니다");
-        }
-      } else {
-        setError("설정을 찾을 수 없습니다");
-      }
-    } catch (err) {
-      console.error("로그인 에러:", err);
-      setError("로그인 중 오류가 발생했습니다");
+      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      const postList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setPosts(postList);
+    } catch (error) {
+      console.error('글 불러오기 실패:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  const handleDelete = async (postId) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    try {
+      await deleteDoc(doc(db, 'posts', postId));
+      setPosts(posts.filter(p => p.id !== postId));
+    } catch (error) {
+      console.error('삭제 실패:', error);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    router.push('/login');
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  if (!user) return null;
+
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "20px",
-      }}
-    >
-      <div
-        style={{
-          background: "white",
-          borderRadius: "24px",
-          padding: "40px",
-          maxWidth: "500px",
-          width: "100%",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
-        }}
-      >
-        {/* 가족사진 슬라이드 */}
-        <div
-          style={{
-            width: "100%",
-            height: "250px",
-            borderRadius: "16px",
-            overflow: "hidden",
-            marginBottom: "24px",
-            position: "relative",
-          }}
-        >
-          {photos.map((photo, index) => (
-            <img
-              key={photo}
-              src={photo}
-              alt={`가족사진 ${index + 1}`}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                opacity: currentPhoto === index ? 1 : 0,
-                transition: "opacity 1s ease-in-out",
-              }}
-            />
-          ))}
-          <div
-            style={{
-              position: "absolute",
-              bottom: "10px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              display: "flex",
-              gap: "8px",
-            }}
-          >
-            {photos.map((_, index) => (
-              <div
-                key={index}
-                onClick={() => setCurrentPhoto(index)}
-                style={{
-                  width: "10px",
-                  height: "10px",
-                  borderRadius: "50%",
-                  background:
-                    currentPhoto === index
-                      ? "white"
-                      : "rgba(255,255,255,0.5)",
-                  cursor: "pointer",
-                  transition: "background 0.3s",
-                }}
-              />
+    <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
+      <div style={{
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        padding: '20px',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '20px' }}>🏠 우리 가족 블로그</h1>
+          <p style={{ margin: '4px 0 0', fontSize: '14px', opacity: 0.9 }}>
+            {user.emoji} {user.name}님 환영합니다!
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <Link href="/write" style={{
+            background: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            textDecoration: 'none',
+            fontSize: '14px'
+          }}>
+            ✏️ 새 글쓰기
+          </Link>
+          <Link href="/change-password" style={{
+            background: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            textDecoration: 'none',
+            fontSize: '14px'
+          }}>
+            🔒 비밀번호 변경
+          </Link>
+          <button onClick={handleLogout} style={{
+            background: 'rgba(255,255,255,0.2)',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}>
+            🚪 로그아웃
+          </button>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+        <h2 style={{ marginBottom: '16px' }}>📝 전체 글 ({posts.length}개)</h2>
+
+        {loading ? (
+          <p style={{ textAlign: 'center', color: '#888' }}>불러오는 중...</p>
+        ) : posts.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '60px 20px',
+            background: 'white', borderRadius: '16px', color: '#888'
+          }}>
+            <p style={{ fontSize: '48px' }}>📭</p>
+            <p>아직 작성된 글이 없어요</p>
+            <Link href="/write" style={{
+              display: 'inline-block', marginTop: '12px', padding: '10px 20px',
+              background: '#764ba2', color: 'white', borderRadius: '8px', textDecoration: 'none'
+            }}>
+              첫 글 작성하기
+            </Link>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {posts.map(post => (
+              <div key={post.id} style={{
+                background: 'white', borderRadius: '12px',
+                padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+              }}>
+                <h3 style={{ margin: '0 0 8px', fontSize: '18px' }}>{post.title}</h3>
+                <p style={{
+                  margin: '0 0 12px', color: '#666', fontSize: '14px',
+                  lineHeight: '1.6', whiteSpace: 'pre-wrap',
+                  maxHeight: '100px', overflow: 'hidden'
+                }}>
+                  {post.content}
+                </p>
+                <div style={{ fontSize: '12px', color: '#999', marginBottom: '12px' }}>
+                  {post.emoji} {post.author} · {formatDate(post.createdAt)}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <Link href={'/edit/' + post.id} style={{
+                    padding: '6px 14px', background: '#667eea', color: 'white',
+                    borderRadius: '6px', textDecoration: 'none', fontSize: '13px'
+                  }}>
+                    ✏️ 수정
+                  </Link>
+                  <button onClick={() => handleDelete(post.id)} style={{
+                    padding: '6px 14px', background: '#e74c3c', color: 'white',
+                    borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '13px'
+                  }}>
+                    🗑️ 삭제
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-
-        {/* 타이틀 */}
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div style={{ fontSize: "40px", marginBottom: "8px" }}>🏠</div>
-          <h1
-            style={{
-              fontSize: "24px",
-              fontWeight: "bold",
-              color: "#1a1a2e",
-            }}
-          >
-            우리 가족 블로그
-          </h1>
-          <p style={{ color: "#888", marginTop: "4px" }}>
-            누구인지 알려주세요!
-          </p>
-        </div>
-
-        {/* 가족 선택 */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            marginBottom: "20px",
-          }}
-        >
-          {familyMembers.map((member) => (
-            <button
-              key={member.id}
-              onClick={() => {
-                setSelected(member.id);
-                setError("");
-              }}
-              style={{
-                padding: "16px",
-                borderRadius: "16px",
-                border: "2px solid",
-                borderColor:
-                  selected === member.id ? "#764ba2" : "#e0e0e0",
-                background:
-                  selected === member.id
-                    ? "linear-gradient(135deg, #667eea, #764ba2)"
-                    : "white",
-                color: selected === member.id ? "white" : "#333",
-                cursor: "pointer",
-                transition: "all 0.2s",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <span style={{ fontSize: "32px" }}>{member.emoji}</span>
-              <span style={{ fontWeight: "600" }}>{member.name}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* 비밀번호 입력 */}
-        <input
-          type="password"
-          placeholder="비밀번호를 입력하세요"
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-            setError("");
-          }}
-          onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-          style={{
-            width: "100%",
-            padding: "14px 16px",
-            borderRadius: "12px",
-            border: "2px solid #e0e0e0",
-            fontSize: "16px",
-            marginBottom: "16px",
-            outline: "none",
-            boxSizing: "border-box",
-          }}
-        />
-
-        {/* 에러 메시지 */}
-        {error && (
-          <p
-            style={{
-              color: "#e74c3c",
-              textAlign: "center",
-              marginBottom: "12px",
-              fontSize: "14px",
-            }}
-          >
-            {error}
-          </p>
         )}
-
-        {/* 로그인 버튼 */}
-        <button
-          onClick={handleLogin}
-          style={{
-            width: "100%",
-            padding: "14px",
-            borderRadius: "12px",
-            border: "none",
-            background: "linear-gradient(135deg, #667eea, #764ba2)",
-            color: "white",
-            fontSize: "16px",
-            fontWeight: "bold",
-            cursor: "pointer",
-          }}
-        >
-          로그인
-        </button>
       </div>
     </div>
   );
